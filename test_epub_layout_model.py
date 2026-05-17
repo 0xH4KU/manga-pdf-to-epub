@@ -256,6 +256,26 @@ class EpubLayoutModelTests(unittest.TestCase):
                 opf = archive.read("EPUB/content.opf").decode("utf-8")
                 self.assertIn('href="images/page-0002.png" media-type="image/png"', opf)
 
+    def test_model_can_exclude_cover_from_reading_pages(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            pdf_path = Path(tmp) / "comic.pdf"
+            epub_path = Path(tmp) / "comic.epub"
+            pdf_path.write_bytes(_two_page_pdf_with_late_cover())
+            model = LayoutModel.from_pdf(pdf_path)
+            model.exclude_cover_from_reading = True
+
+            counts = model.export_epub(epub_path, overwrite=True, title="Comic")
+
+            self.assertEqual({"jpg": 2, "png": 0, "total": 1}, counts)
+            with ZipFile(epub_path) as archive:
+                names = archive.namelist()
+                self.assertNotIn("EPUB/xhtml/page-0001.xhtml", names)
+                self.assertIn("EPUB/xhtml/page-0002.xhtml", names)
+                opf = archive.read("EPUB/content.opf").decode("utf-8")
+                self.assertIn('properties="cover-image"', opf)
+                self.assertNotIn('idref="page-0001"', opf)
+                self.assertIn('idref="page-0002"', opf)
+
 
 if __name__ == "__main__":
     unittest.main()

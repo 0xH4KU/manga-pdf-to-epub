@@ -31,6 +31,7 @@ class EpubLayoutApp:
         self.title_var = tk.StringVar(value="")
         self.author_var = tk.StringVar(value="")
         self.language_var = tk.StringVar(value="zh-Hant")
+        self.exclude_cover_var = tk.BooleanVar(value=False)
         self.batch_project: BatchProject | None = None
         self.batch_output_dir: Path | None = None
 
@@ -103,6 +104,11 @@ class EpubLayoutApp:
         ttk.Label(right, text="Language").pack(anchor=tk.W, pady=(8, 0))
         ttk.Entry(right, textvariable=self.language_var).pack(fill=tk.X)
         ttk.Button(right, text="Set Selected As Cover", command=self.set_selected_as_cover).pack(fill=tk.X, pady=(8, 0))
+        ttk.Checkbutton(
+            right,
+            text="Cover only, exclude from pages",
+            variable=self.exclude_cover_var,
+        ).pack(anchor=tk.W, pady=(8, 0))
         ttk.Button(right, text="Export Selected Images...", command=self.export_selected_images).pack(fill=tk.X, pady=(8, 0))
         ttk.Separator(right).pack(fill=tk.X, pady=16)
         ttk.Label(right, text="Batch project").pack(anchor=tk.W)
@@ -569,6 +575,7 @@ class EpubLayoutApp:
         self.title_var.set(self.model.title)
         self.author_var.set(self.model.author)
         self.language_var.set(self.model.language)
+        self.exclude_cover_var.set(self.model.exclude_cover_from_reading)
 
     def _store_metadata_fields(self) -> None:
         if self.model is None:
@@ -576,6 +583,7 @@ class EpubLayoutApp:
         self.model.title = self.title_var.get().strip() or self.model.source_path.stem
         self.model.author = self.author_var.get().strip()
         self.model.language = self.language_var.get().strip() or "zh-Hant"
+        self.model.exclude_cover_from_reading = self.exclude_cover_var.get()
 
     def _is_cover_entry(self, entry: LayoutEntry) -> bool:
         if self.model is None:

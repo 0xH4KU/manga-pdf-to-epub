@@ -13,6 +13,9 @@ class _FakeBool:
     def get(self):
         return self.value
 
+    def set(self, value):
+        self.value = value
+
 
 class _FakeCanvas:
     def delete(self, *_args):
@@ -69,6 +72,7 @@ class _FakeDeleteModel:
         self.entries = entries
         self.deleted = []
         self.cover_source_index = 1
+        self.exclude_cover_from_reading = False
 
     def delete_entry(self, index):
         self.deleted.append(index)
@@ -369,6 +373,34 @@ class EpubLayoutGuiListTests(unittest.TestCase):
 
         self.assertEqual(Path("/tmp/out"), app.batch_project.validated_dir)
         self.assertEqual(["Ready a.pdf"], app.batch_list.items)
+
+    def test_store_metadata_fields_updates_cover_only_option(self):
+        app = EpubLayoutApp.__new__(EpubLayoutApp)
+        app.model = _FakeDeleteModel([_entry("Page 1"), _entry("Page 2")])
+        app.title_var = SimpleNamespace(get=lambda: "Book")
+        app.author_var = SimpleNamespace(get=lambda: "")
+        app.language_var = SimpleNamespace(get=lambda: "zh-Hant")
+        app.exclude_cover_var = _FakeBool(True)
+
+        app._store_metadata_fields()
+
+        self.assertTrue(app.model.exclude_cover_from_reading)
+
+    def test_load_metadata_fields_reads_cover_only_option(self):
+        app = EpubLayoutApp.__new__(EpubLayoutApp)
+        app.model = _FakeDeleteModel([_entry("Page 1"), _entry("Page 2")])
+        app.model.title = "Book"
+        app.model.author = ""
+        app.model.language = "zh-Hant"
+        app.model.exclude_cover_from_reading = True
+        app.title_var = SimpleNamespace(set=lambda value: setattr(app, "title_value", value))
+        app.author_var = SimpleNamespace(set=lambda value: setattr(app, "author_value", value))
+        app.language_var = SimpleNamespace(set=lambda value: setattr(app, "language_value", value))
+        app.exclude_cover_var = _FakeBool(False)
+
+        app._load_metadata_fields()
+
+        self.assertTrue(app.exclude_cover_var.get())
 
 
 if __name__ == "__main__":

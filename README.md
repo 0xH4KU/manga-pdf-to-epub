@@ -63,8 +63,9 @@ Typical Apple Books manga workflow:
 5. Delete unwanted pages if necessary. Use single-page delete, `Delete First...`, `Delete Last...`, or `Delete Range...`; quick delete numbers refer to the current left-side spine positions.
 6. Use `Recover Last Deleted` or `Cmd+Z` if a page or range was removed by mistake.
 7. Edit title, author, and language, then select an image page and use `Set Selected As Cover` when the first image should not be the cover.
-8. Insert external JPEG/PNG pages if needed, or select spine entries and use `Export Selected Images...` to extract their image bytes.
-9. Export EPUB and import it into Apple Books for final checking.
+8. Enable `Cover only, exclude from pages` when the cover should be used only as EPUB cover art and not appear as a reading page.
+9. Insert external JPEG/PNG pages if needed, or select spine entries and use `Export Selected Images...` to extract their image bytes.
+10. Export EPUB and import it into Apple Books for final checking.
 
 The GUI normalizes EPUB internals during export. For example, if source pages 1-3 are deleted and the visible list starts with source `Page 4`, the exported EPUB still uses sequential names such as `page-0001.xhtml` and `images/page-0001.jpg`. The visible source labels remain unchanged so you can trace edits back to the original PDF.
 

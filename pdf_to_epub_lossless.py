@@ -40,6 +40,7 @@ def convert_pdf_to_epub(
     blank_pages_after_cover: int = 0,
     pair_first_two_pages: bool = False,
     cover_item_id: str | None = None,
+    exclude_cover_from_reading: bool = False,
 ) -> dict[str, int]:
     if epub_path.exists() and not overwrite:
         raise PdfImageError(f"Refusing to overwrite existing file: {epub_path}")
@@ -65,6 +66,7 @@ def convert_pdf_to_epub(
         apple_books=apple_books,
         pair_first_two_pages=pair_first_two_pages,
         cover_item_id=cover_item_id,
+        exclude_cover_from_reading=exclude_cover_from_reading,
         counts=counts,
     )
 
@@ -80,11 +82,15 @@ def write_epub_from_pages(
     apple_books: bool = False,
     pair_first_two_pages: bool = False,
     cover_item_id: str | None = None,
+    exclude_cover_from_reading: bool = False,
     counts: dict[str, int] | None = None,
 ) -> dict[str, int]:
     if epub_path.exists() and not overwrite:
         raise PdfImageError(f"Refusing to overwrite existing file: {epub_path}")
     identifier = f"urn:uuid:{uuid.uuid5(uuid.NAMESPACE_URL, source_path.resolve().as_uri())}"
+
+    cover_id = cover_item_id or _first_image_item_id(pages)
+    reading_pages = _reading_pages(pages, cover_id, exclude_cover_from_reading)
 
     with ZipFile(epub_path, "w") as archive:
         _write_stored(archive, "mimetype", b"application/epub+zip")
@@ -92,19 +98,31 @@ def write_epub_from_pages(
         _write_deflated(
             archive,
             "EPUB/content.opf",
-            _content_opf(title, identifier, pages, apple_books, pair_first_two_pages, author, language, cover_item_id),
+            _content_opf(
+                title,
+                identifier,
+                pages,
+                reading_pages,
+                apple_books,
+                pair_first_two_pages,
+                author,
+                language,
+                cover_id,
+            ),
         )
-        _write_deflated(archive, "EPUB/nav.xhtml", _nav_xhtml(title, pages))
+        _write_deflated(archive, "EPUB/nav.xhtml", _nav_xhtml(title, reading_pages))
         _write_deflated(archive, "EPUB/styles/page.css", _page_css())
-        for page in pages:
+        for page in reading_pages:
             if page.is_blank:
                 _write_deflated(archive, f"EPUB/{page.xhtml_href}", _blank_page_xhtml(title, page))
             else:
                 _write_deflated(archive, f"EPUB/{page.xhtml_href}", _page_xhtml(title, page))
+        for page in pages:
+            if not page.is_blank:
                 _write_stored(archive, f"EPUB/{page.image_href}", page.image_data)
 
     result = dict(counts or {})
-    result["total"] = len(pages)
+    result["total"] = len(reading_pages)
     return result
 
 
@@ -206,6 +224,7 @@ def _content_opf(
     title: str,
     identifier: str,
     pages: list[EpubPage],
+    reading_pages: list[EpubPage],
     apple_books: bool = False,
     pair_first_two_pages: bool = False,
     author: str | None = None,
@@ -225,16 +244,16 @@ def _content_opf(
     xhtml_items = "\n".join(
         f'    <item id="{page.item_id}" href="{page.xhtml_href}" media-type="application/xhtml+xml"'
         f'{" properties=\"svg\"" if not page.is_blank else ""}/>'
-        for page in pages
+        for page in reading_pages
     )
     spread = "none" if apple_books else "auto"
     if apple_books:
         spine_items = "\n".join(
             f'    <itemref idref="{page.item_id}" properties="rendition:page-spread-center"/>'
-            for page in pages
+            for page in reading_pages
         )
     else:
-        spine_items = "\n".join(_spine_itemref(page, pair_first_two_pages) for page in pages)
+        spine_items = "\n".join(_spine_itemref(page, pair_first_two_pages) for page in reading_pages)
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <package version="3.0" unique-identifier="bookid" prefix="rendition: http://www.idpf.org/vocab/rendition/#" xmlns="http://www.idpf.org/2007/opf">
   <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
@@ -265,6 +284,12 @@ def _first_image_item_id(pages: list[EpubPage]) -> str | None:
         if not page.is_blank:
             return page.item_id
     return None
+
+
+def _reading_pages(pages: list[EpubPage], cover_item_id: str | None, exclude_cover_from_reading: bool) -> list[EpubPage]:
+    if not exclude_cover_from_reading or cover_item_id is None:
+        return pages
+    return [page for page in pages if page.item_id != cover_item_id]
 
 
 def _spine_itemref(page: EpubPage, pair_first_two_pages: bool) -> str:

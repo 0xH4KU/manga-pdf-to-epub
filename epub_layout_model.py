@@ -32,6 +32,7 @@ class LayoutModel:
         author: str | None = None,
         language: str = "zh-Hant",
         cover_source_index: int | None = None,
+        exclude_cover_from_reading: bool = False,
     ):
         self.source_path = source_path
         self.entries = entries
@@ -41,6 +42,7 @@ class LayoutModel:
         self.author = author or ""
         self.language = language or "zh-Hant"
         self.cover_source_index = cover_source_index or self._first_image_source_index()
+        self.exclude_cover_from_reading = exclude_cover_from_reading
 
     @classmethod
     def from_pdf(cls, pdf_path: Path) -> "LayoutModel":
@@ -235,6 +237,7 @@ class LayoutModel:
             language=self.language,
             overwrite=overwrite,
             cover_item_id=self.normalized_cover_item_id(),
+            exclude_cover_from_reading=self.exclude_cover_from_reading,
             counts=counts,
         )
 

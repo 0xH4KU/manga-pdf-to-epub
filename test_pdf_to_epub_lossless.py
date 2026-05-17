@@ -140,6 +140,39 @@ class PdfToEpubLosslessTests(unittest.TestCase):
                 self.assertNotIn('id="img-0001" href="images/page-0001.jpg" media-type="image/jpeg" properties="cover-image"', opf)
                 self.assertIn('id="img-0002" href="images/page-0002.jpg" media-type="image/jpeg" properties="cover-image"', opf)
 
+    def test_cover_image_can_be_excluded_from_reading_pages(self):
+        cover = b"\xff\xd8COVER\xff\xd9"
+        page2 = b"\xff\xd8PAGE2\xff\xd9"
+        with tempfile.TemporaryDirectory() as tmp:
+            pdf_path = Path(tmp) / "comic.pdf"
+            epub_path = Path(tmp) / "comic.epub"
+            pdf_path.write_bytes(_two_page_pdf_with_late_cover(cover, page2))
+
+            counts = convert_pdf_to_epub(
+                pdf_path,
+                epub_path,
+                title="Comic",
+                cover_item_id="page-0001",
+                exclude_cover_from_reading=True,
+            )
+
+            self.assertEqual({"jpg": 2, "png": 0, "total": 1}, counts)
+            with ZipFile(epub_path) as archive:
+                names = archive.namelist()
+                self.assertEqual(cover, archive.read("EPUB/images/page-0001.jpg"))
+                self.assertEqual(page2, archive.read("EPUB/images/page-0002.jpg"))
+                self.assertNotIn("EPUB/xhtml/page-0001.xhtml", names)
+                self.assertIn("EPUB/xhtml/page-0002.xhtml", names)
+                opf = archive.read("EPUB/content.opf").decode("utf-8")
+                nav = archive.read("EPUB/nav.xhtml").decode("utf-8")
+                self.assertIn('id="img-0001" href="images/page-0001.jpg" media-type="image/jpeg" properties="cover-image"', opf)
+                self.assertIn('id="page-0002" href="xhtml/page-0002.xhtml"', opf)
+                self.assertNotIn('id="page-0001" href="xhtml/page-0001.xhtml"', opf)
+                self.assertNotIn('idref="page-0001"', opf)
+                self.assertIn('idref="page-0002"', opf)
+                self.assertNotIn("Page 1", nav)
+                self.assertIn("Page 2", nav)
+
 
 if __name__ == "__main__":
     unittest.main()

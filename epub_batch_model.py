@@ -27,6 +27,7 @@ class LayoutTemplate:
     author: str
     language: str
     cover_source_index: int | None
+    exclude_cover_from_reading: bool
 
 
 class BatchProject:
@@ -48,6 +49,7 @@ class BatchProject:
                 author=model.author,
                 language=model.language,
                 cover_source_index=model.cover_source_index,
+                exclude_cover_from_reading=model.exclude_cover_from_reading,
             )
         )
 
@@ -119,6 +121,7 @@ class BatchProject:
         model.title = item.title or item.pdf_path.stem
         model.author = item.author or self.template.author
         model.language = self.template.language
+        model.exclude_cover_from_reading = self.template.exclude_cover_from_reading
         if self.template.cover_source_index is not None:
             try:
                 model.set_cover(self.template.cover_source_index)
