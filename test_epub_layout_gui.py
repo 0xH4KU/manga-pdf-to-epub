@@ -67,6 +67,14 @@ class _FakeStatus:
         self.value = value
 
 
+class _FakeRoot:
+    def __init__(self):
+        self.bindings = {}
+
+    def bind_all(self, sequence, callback):
+        self.bindings[sequence] = callback
+
+
 class _FakeDeleteModel:
     def __init__(self, entries):
         self.entries = entries
@@ -200,6 +208,22 @@ class EpubLayoutGuiPreviewTests(unittest.TestCase):
 
 
 class EpubLayoutGuiListTests(unittest.TestCase):
+    def test_bind_shortcuts_registers_safe_layout_actions(self):
+        app = EpubLayoutApp.__new__(EpubLayoutApp)
+        app.root = _FakeRoot()
+        app.recover_last_deleted = lambda: setattr(app, "recovered", True)
+        app.delete_selected_entry = lambda: setattr(app, "deleted", True)
+        app.export_selected_images = lambda: setattr(app, "exported", True)
+
+        app._bind_shortcuts()
+        app.root.bindings["<Delete>"](None)
+        app.root.bindings["<Command-Shift-E>"](None)
+
+        self.assertIn("<Command-z>", app.root.bindings)
+        self.assertIn("<Control-z>", app.root.bindings)
+        self.assertTrue(app.deleted)
+        self.assertTrue(app.exported)
+
     def test_refresh_list_can_preserve_scroll_position(self):
         app = EpubLayoutApp.__new__(EpubLayoutApp)
         app.model = SimpleNamespace(entries=[_entry(f"Page {index}") for index in range(1, 8)])
@@ -308,7 +332,7 @@ class EpubLayoutGuiListTests(unittest.TestCase):
         self.assertEqual(["Page 3"], [entry.label for entry in app.model.entries])
         self.assertEqual([[(0, "Page 1"), (1, "Page 2")]], [[(index, entry.label) for index, entry in group] for group in app.deleted_entries])
         self.assertEqual(0, app.page_list.selection)
-        self.assertEqual("Deleted first 2 pages.", app.status.value)
+        self.assertEqual("Deleted 2 entries: 2 images, 0 blanks.", app.status.value)
 
     def test_recover_last_deleted_restores_grouped_delete(self):
         app = EpubLayoutApp.__new__(EpubLayoutApp)
@@ -417,6 +441,49 @@ class EpubLayoutGuiListTests(unittest.TestCase):
 
         self.assertEqual(Path("/tmp/out"), app.batch_project.validated_dir)
         self.assertEqual(["Ready a.pdf"], app.batch_list.items)
+        self.assertEqual("Batch validation complete: 1 ready, 0 warning, 0 failed.", app.status.value)
+
+    def test_batch_validate_reports_status_counts(self):
+        app = EpubLayoutApp.__new__(EpubLayoutApp)
+        app.batch_project = _FakeBatchProject()
+        app.batch_project.items = [
+            SimpleNamespace(pdf_path=Path("/tmp/ready.pdf"), status="Ready", warnings=[], error=None),
+            SimpleNamespace(pdf_path=Path("/tmp/warn.pdf"), status="Warning", warnings=["Page count differs"], error=None),
+            SimpleNamespace(pdf_path=Path("/tmp/bad.pdf"), status="Failed", warnings=[], error="bad pdf"),
+        ]
+        app.batch_project.validate_all = lambda output_dir: setattr(app.batch_project, "validated_dir", output_dir)
+        app.batch_list = _FakeListbox(selection=0)
+        app.status = _FakeStatus()
+
+        with patch("epub_layout_gui.filedialog.askdirectory", return_value="/tmp/out"):
+            app.validate_batch()
+
+        self.assertEqual("Batch validation complete: 1 ready, 1 warning, 1 failed.", app.status.value)
+
+    def test_normalize_export_order_reports_entry_count(self):
+        app = EpubLayoutApp.__new__(EpubLayoutApp)
+        app.model = SimpleNamespace(entries=[_entry("Page 1"), _entry("Blank 1", is_blank=True), _entry("Page 2")])
+        app.status = _FakeStatus()
+        app.refresh_list = lambda preserve_yview=False: setattr(app, "preserved_yview", preserve_yview)
+        app.refresh_preview = lambda: setattr(app, "preview_refreshed", True)
+
+        app.normalize_export_order()
+
+        self.assertEqual("Export will normalize 3 entries automatically.", app.status.value)
+
+    def test_quick_delete_status_reports_deleted_mix(self):
+        app = EpubLayoutApp.__new__(EpubLayoutApp)
+        app.model = _FakeDeleteModel([_entry("Blank 1", is_blank=True), _entry("Page 1"), _entry("Page 2")])
+        app.page_list = _FakeListbox(selection=0)
+        app.status = _FakeStatus()
+        app.deleted_entries = []
+        app.refresh_list = lambda preserve_yview=False: setattr(app, "preserved_yview", preserve_yview)
+        app.refresh_preview = lambda: setattr(app, "preview_refreshed", True)
+
+        with patch("epub_layout_gui.messagebox.askyesno", return_value=True):
+            app.quick_delete_first(2)
+
+        self.assertEqual("Deleted 2 entries: 1 image, 1 blank.", app.status.value)
 
     def test_load_batch_template_from_preset_creates_batch_project(self):
         app = EpubLayoutApp.__new__(EpubLayoutApp)

@@ -36,8 +36,15 @@ class EpubLayoutApp:
         self.batch_output_dir: Path | None = None
 
         self._build_ui()
+        self._bind_shortcuts()
+
+    def _bind_shortcuts(self) -> None:
         self.root.bind_all("<Command-z>", lambda _event: self.recover_last_deleted())
         self.root.bind_all("<Control-z>", lambda _event: self.recover_last_deleted())
+        self.root.bind_all("<Delete>", lambda _event: self.delete_selected_entry())
+        self.root.bind_all("<BackSpace>", lambda _event: self.delete_selected_entry())
+        self.root.bind_all("<Command-Shift-E>", lambda _event: self.export_selected_images())
+        self.root.bind_all("<Control-Shift-E>", lambda _event: self.export_selected_images())
 
     def _build_ui(self) -> None:
         toolbar = ttk.Frame(self.root, padding=8)
@@ -79,18 +86,17 @@ class EpubLayoutApp:
 
         right = ttk.Frame(main, padding=8)
         main.add(right, weight=1)
-        ttk.Label(right, text="Blank pages").pack(anchor=tk.W)
+        ttk.Label(right, text="Insert").pack(anchor=tk.W)
         ttk.Button(right, text="Insert Blank Before", command=lambda: self.insert_blank(before=True)).pack(fill=tk.X, pady=(8, 0))
         ttk.Button(right, text="Insert Blank After", command=lambda: self.insert_blank(before=False)).pack(fill=tk.X, pady=(8, 0))
         ttk.Button(right, text="Insert Image Before", command=lambda: self.insert_image(before=True)).pack(fill=tk.X, pady=(8, 0))
         ttk.Button(right, text="Insert Image After", command=lambda: self.insert_image(before=False)).pack(fill=tk.X, pady=(8, 0))
+        ttk.Separator(right).pack(fill=tk.X, pady=16)
+        ttk.Label(right, text="Delete").pack(anchor=tk.W)
         ttk.Button(right, text="Delete Selected Page", command=self.delete_selected_entry).pack(fill=tk.X, pady=(8, 0))
         ttk.Button(right, text="Recover Last Deleted", command=self.recover_last_deleted).pack(fill=tk.X, pady=(8, 0))
-        ttk.Separator(right).pack(fill=tk.X, pady=16)
         ttk.Button(right, text="Quick: Blank Before Cover", command=self.quick_blank_before_cover).pack(fill=tk.X)
         ttk.Button(right, text="Quick: Blank After Cover", command=self.quick_blank_after_cover).pack(fill=tk.X, pady=(8, 0))
-        ttk.Separator(right).pack(fill=tk.X, pady=16)
-        ttk.Label(right, text="Quick delete").pack(anchor=tk.W)
         ttk.Button(right, text="Delete First...", command=self.ask_delete_first).pack(fill=tk.X, pady=(8, 0))
         ttk.Button(right, text="Delete Last...", command=self.ask_delete_last).pack(fill=tk.X, pady=(8, 0))
         ttk.Button(right, text="Delete Range...", command=self.ask_delete_range).pack(fill=tk.X, pady=(8, 0))
@@ -391,7 +397,7 @@ class EpubLayoutApp:
             return
         self.batch_project.validate_all(output_dir)
         self.refresh_batch_list()
-        self.status.set("Batch validation complete.")
+        self.status.set(self._batch_validation_status())
 
     def export_ready_batch(self) -> None:
         self._export_batch(include_warnings=False)
@@ -469,12 +475,24 @@ class EpubLayoutApp:
         )
         messagebox.showinfo("Batch complete", f"Exported ready EPUB files to:\n{output_dir}")
 
+    def _batch_validation_status(self) -> str:
+        if self.batch_project is None:
+            return "Batch validation complete: 0 ready, 0 warning, 0 failed."
+        counts = {"Ready": 0, "Warning": 0, "Failed": 0}
+        for item in self.batch_project.items:
+            if item.status in counts:
+                counts[item.status] += 1
+        return (
+            "Batch validation complete: "
+            f"{counts['Ready']} ready, {counts['Warning']} warning, {counts['Failed']} failed."
+        )
+
     def normalize_export_order(self) -> None:
         if self.model is None:
             return
         self.refresh_list(preserve_yview=True)
         self.refresh_preview()
-        self.status.set("Export order will be normalized automatically.")
+        self.status.set(f"Export will normalize {len(self.model.entries)} entries automatically.")
 
     def _delete_group(self, delete_action, status_message: str) -> None:
         if self.model is None:
@@ -498,7 +516,7 @@ class EpubLayoutApp:
                 first_deleted = min(index for index, _entry in deleted)
                 self.page_list.selection_set(min(first_deleted, len(self.model.entries) - 1))
             self.refresh_preview()
-            self.status.set(status_message)
+            self.status.set(_delete_status(deleted, status_message))
         except Exception as exc:
             messagebox.showerror("Delete pages failed", str(exc))
 
@@ -758,6 +776,16 @@ class _VirtualBlank:
     def __init__(self, label: str):
         self.label = label
         self.is_blank = True
+
+
+def _delete_status(deleted: list[tuple[int, LayoutEntry]], fallback: str) -> str:
+    if not deleted:
+        return fallback
+    blank_count = sum(1 for _index, entry in deleted if entry.is_blank)
+    image_count = len(deleted) - blank_count
+    image_word = "image" if image_count == 1 else "images"
+    blank_word = "blank" if blank_count == 1 else "blanks"
+    return f"Deleted {len(deleted)} entries: {image_count} {image_word}, {blank_count} {blank_word}."
 
 
 def main() -> int:

@@ -159,26 +159,26 @@ Files:
 
 Detailed tasks:
 
-- [ ] Reorganize right-side controls into labeled groups:
+- [x] Reorganize right-side controls into labeled groups:
   - Insert
   - Delete
   - Metadata
   - Export
   - Batch
-- [ ] Keep existing button text where tests or muscle memory depend on it.
-- [ ] Improve status messages:
+- [x] Keep existing button text where tests or muscle memory depend on it.
+- [x] Improve status messages:
   - deletion reports count and blank/source mix.
   - selected image export reports exported count and skipped blanks.
   - normalization says how many entries will be normalized during export.
   - batch validation reports ready/warning/failed counts.
-- [ ] Add safe keyboard shortcuts:
+- [x] Add safe keyboard shortcuts:
   - Delete selected page.
   - Undo/recover last delete group.
   - Export selected images.
-- [ ] Avoid adding visual complexity beyond standard Tkinter/ttk widgets.
-- [ ] Add GUI tests for status-message behavior that can be tested without opening real dialogs.
-- [ ] Run focused tests, then full verification.
-- [ ] Commit with: `refactor: clarify layout editor controls`
+- [x] Avoid adding visual complexity beyond standard Tkinter/ttk widgets.
+- [x] Add GUI tests for status-message behavior that can be tested without opening real dialogs.
+- [x] Run focused tests, then full verification.
+- [x] Commit with: `refactor: clarify layout editor controls`
 
 ## Wave 5 - Responsiveness And Long-Task Guardrails
 
