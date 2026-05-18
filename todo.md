@@ -395,8 +395,8 @@ Detailed tasks:
 
 ## UI Refresh Completion Checklist
 
-- [ ] Right-side controls no longer clip on the provided screenshot-sized window.
-- [ ] The main app reads as a professional editing workbench: navigation, preview, inspector, command access, and status bar.
-- [ ] All existing layout, preset, batch, export, and validation behavior remains intact.
-- [ ] Full verification command passes after every wave.
-- [ ] `git log --oneline` shows one commit per UI refresh wave.
+- [x] Right-side controls no longer clip on the provided screenshot-sized window.
+- [x] The main app reads as a professional editing workbench: navigation, preview, inspector, command access, and status bar.
+- [x] All existing layout, preset, batch, export, and validation behavior remains intact.
+- [x] Full verification command passes after every wave.
+- [x] `git log --oneline` shows one commit per UI refresh wave.
