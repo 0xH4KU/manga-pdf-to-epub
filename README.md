@@ -17,10 +17,11 @@ This tool focuses on the boring-but-crucial details:
 - Quick-delete the first N, last N, or a spine-position range.
 - Normalize exported EPUB internals so spine order, XHTML names, image names, and item IDs stay sequential after edits.
 - Set EPUB title, author, language, and cover image from the GUI.
-- Insert external JPEG/PNG pages into the EPUB spine.
+- Insert external JPEG/PNG pages into the EPUB spine, including separately sourced covers.
 - Export selected spine images losslessly to a folder.
-- Save a layout preset and batch-apply it to a volume set.
-- Build a batch project queue from the current layout template and export ready PDFs together.
+- Save v2 layout presets with spine order, metadata, cover rule, blanks, deleted pages, and inserted-image references.
+- Build a batch project queue from the current layout template or a saved preset and export ready PDFs together.
+- Validate generated EPUB structure before reporting export success.
 - Recover deleted pages during layout editing.
 
 ## Features
@@ -33,7 +34,7 @@ This tool focuses on the boring-but-crucial details:
 - Arbitrary blank page insertion before or after selected pages.
 - Page deletion with recover support.
 - Preset save/load for applying the same layout correction to multiple volumes.
-- Batch export from a saved preset.
+- Batch export from the current layout template or a saved preset.
 
 ## Install
 
@@ -62,9 +63,9 @@ Typical Apple Books manga workflow:
 4. Insert blank pages where needed to realign double-page artwork.
 5. Delete unwanted pages if necessary. Use single-page delete, `Delete First...`, `Delete Last...`, or `Delete Range...`; quick delete numbers refer to the current left-side spine positions.
 6. Use `Recover Last Deleted` or `Cmd+Z` if a page or range was removed by mistake.
-7. Edit title, author, and language, then select an image page and use `Set Selected As Cover` when the first image should not be the cover.
+7. Edit title, author, and language, then select any source or inserted image page and use `Set Selected As Cover` when the first image should not be the cover.
 8. Enable `Cover only, exclude from pages` when the cover should be used only as EPUB cover art and not appear as a reading page.
-9. Insert external JPEG/PNG pages if needed, or select spine entries and use `Export Selected Images...` to extract their image bytes.
+9. Insert external JPEG/PNG pages if needed. Inserted pages can be exported as reading pages, selected as cover art, or excluded from reading pages when used as cover-only art.
 10. Export EPUB and import it into Apple Books for final checking.
 
 The GUI normalizes EPUB internals during export. For example, if source pages 1-3 are deleted and the visible list starts with source `Page 4`, the exported EPUB still uses sequential names such as `page-0001.xhtml` and `images/page-0001.jpg`. The visible source labels remain unchanged so you can trace edits back to the original PDF.
@@ -79,9 +80,17 @@ For a volume set that shares the same correction pattern:
 4. Click `Add PDFs...` and choose the remaining volumes.
 5. Click `Validate Batch...` and choose an output directory.
 6. Review the batch queue. Matching PDFs are marked `Ready`; page-count mismatches are marked `Warning`; corrupt or unsupported PDFs are marked `Failed`.
-7. Click `Export Ready...` to export only ready items. A failed item does not stop the rest of the queue.
+7. Click `Export Ready...` to export only ready items, or `Export All...` to include warning items. Failed items are skipped either way.
 
-The older `Save Preset`, `Load Preset`, and `Batch Apply` buttons remain available for simple preset-file workflows.
+To reuse a saved layout without reopening the sample PDF, click `Load Template Preset...`, then add PDFs and validate the queue. The older `Batch Apply` button remains available for simple preset-file workflows.
+
+Before batch export, the GUI checks whether output EPUB files already exist and asks before replacing them.
+
+## Presets
+
+Newly saved presets use `version: 2`. They preserve the edited spine order, blank pages, deleted source pages, metadata defaults, cover-only mode, selected cover rule, and paths to inserted JPEG/PNG pages.
+
+Version 1 presets from earlier builds still load. When a v2 preset references an inserted image, that image file must still exist at the saved path so it can be reinserted into the target layout.
 
 ## Command Line
 
@@ -118,6 +127,12 @@ Export CBZ:
 The GUI preview deliberately models Apple Books' cover behavior by adding a virtual blank page on the right of the first spine item. This virtual page is not exported into the EPUB. It is only a preview aid so you can decide whether to insert a real blank page into the EPUB spine.
 
 If Apple Books shifts spreads after import, try inserting a real blank page before the cover, then preview again with Apple Books-like mode enabled.
+
+## EPUB Validation
+
+Every EPUB export now runs a lightweight structure check before success is reported. The check verifies the `mimetype` entry, core container/OPF files, manifest hrefs, spine idrefs, and cover-image references.
+
+The OPF modified timestamp is intentionally deterministic so repeated exports are easier to compare.
 
 ## Lossless Scope
 

@@ -247,18 +247,18 @@ Files:
 
 Detailed tasks:
 
-- [ ] Document inserted image covers.
-- [ ] Document preset v1 compatibility and v2 behavior.
-- [ ] Document batch project from preset.
-- [ ] Document `Export Ready...` vs `Export All...`.
-- [ ] Document EPUB self-check behavior.
-- [ ] Mark completed waves in this file.
-- [ ] Run full verification.
-- [ ] Commit with: `docs: document improved layout workflow`
+- [x] Document inserted image covers.
+- [x] Document preset v1 compatibility and v2 behavior.
+- [x] Document batch project from preset.
+- [x] Document `Export Ready...` vs `Export All...`.
+- [x] Document EPUB self-check behavior.
+- [x] Mark completed waves in this file.
+- [x] Run full verification.
+- [x] Commit with: `docs: document improved layout workflow`
 
 ## Completion Checklist
 
-- [ ] All waves above are either complete and committed or intentionally deferred.
-- [ ] `git log --oneline` shows one commit per completed wave.
-- [ ] Full verification command passes.
-- [ ] `git status --short` is clean except for intentionally untracked local books/output files ignored by `.gitignore`.
+- [x] All waves above are either complete and committed or intentionally deferred.
+- [x] `git log --oneline` shows one commit per completed wave.
+- [x] Full verification command passes.
+- [x] `git status --short` is clean except for intentionally untracked local books/output files ignored by `.gitignore`.
