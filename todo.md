@@ -435,3 +435,25 @@ Detailed tasks:
 - [x] Add a little notebook/tab padding or inspector width room so tab labels do not visually overlap.
 - [x] Run focused GUI tests, then full verification.
 - [x] Commit with: `refactor: polish inspector control ordering`
+
+## Wave 13 - Custom Inspector Tab Bar
+
+Purpose: replace the macOS `ttk.Notebook` visible tab strip because it still looks visually stacked in dark mode.
+
+Why this matters: spacing changes cannot fully fix native Notebook rendering on macOS. A custom three-button inspector tab bar lets the app control selected state, spacing, and panel switching directly, so `Edit`, `Book`, and `Batch` read as separate controls.
+
+Files:
+
+- Modify `epub_layout_gui.py`
+- Test `test_epub_layout_gui.py`
+
+Detailed tasks:
+
+- [x] Add tests for inspector tab state switching from `Edit` to another tab.
+- [x] Replace the visible `ttk.Notebook` inspector tabs with a custom `ttk.Frame` tab bar.
+- [x] Keep the same `Edit`, `Book`, and `Batch` content panels.
+- [x] Use one content container with three child frames and raise the active frame.
+- [x] Keep inspector content scrollable inside each tab.
+- [x] Keep selected tab state in a small variable so styling and tests can inspect it.
+- [x] Run focused GUI tests, then full verification.
+- [x] Commit with: `refactor: replace native inspector tabs`

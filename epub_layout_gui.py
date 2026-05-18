@@ -139,16 +139,22 @@ class EpubLayoutApp:
         self.preview.pack(fill=tk.BOTH, expand=True, pady=(6, 0))
         self.preview.bind("<Configure>", lambda _event: self.refresh_preview())
 
-        style = ttk.Style(self.root)
-        style.configure("Workbench.TNotebook.Tab", padding=(18, 5))
-        inspector = ttk.Notebook(main, style="Workbench.TNotebook")
+        inspector = ttk.Frame(main, width=320)
         main.add(inspector, weight=1)
-        edit_tab = self._add_inspector_tab(inspector, "Edit")
-        book_tab = self._add_inspector_tab(inspector, "Book")
-        batch_tab = self._add_inspector_tab(inspector, "Batch")
+        inspector.pack_propagate(False)
+        self.inspector_tabs: dict[str, ttk.Frame] = {}
+        self.inspector_tab_buttons: dict[str, ttk.Button] = {}
+        self.active_inspector_tab = "Edit"
+        self._build_inspector_tab_bar(inspector)
+        content = ttk.Frame(inspector)
+        content.pack(fill=tk.BOTH, expand=True)
+        edit_tab = self._add_inspector_tab(content, "Edit")
+        book_tab = self._add_inspector_tab(content, "Book")
+        batch_tab = self._add_inspector_tab(content, "Batch")
         self._build_edit_tab(edit_tab)
         self._build_book_tab(book_tab)
         self._build_batch_tab(batch_tab)
+        self._show_inspector_tab("Edit")
 
         statusbar = ttk.Frame(self.root, padding=(8, 4))
         statusbar.pack(side=tk.BOTTOM, fill=tk.X)
@@ -156,10 +162,17 @@ class EpubLayoutApp:
         ttk.Label(statusbar, textvariable=self.workspace_status).pack(side=tk.RIGHT)
         self.refresh_workspace_status()
 
-    def _add_inspector_tab(self, notebook: ttk.Notebook, title: str) -> ttk.Frame:
-        outer = ttk.Frame(notebook)
-        notebook.add(outer, text=title)
-        outer.configure(width=320)
+    def _build_inspector_tab_bar(self, parent: ttk.Frame) -> None:
+        tabbar = ttk.Frame(parent, padding=(8, 8, 8, 4))
+        tabbar.pack(fill=tk.X)
+        for title in self._inspector_tab_titles():
+            button = ttk.Button(tabbar, text=title, command=lambda tab=title: self._show_inspector_tab(tab))
+            button.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=3)
+            self.inspector_tab_buttons[title] = button
+
+    def _add_inspector_tab(self, container: ttk.Frame, title: str) -> ttk.Frame:
+        outer = ttk.Frame(container)
+        outer.place(relx=0, rely=0, relwidth=1, relheight=1)
         outer.pack_propagate(False)
         canvas = tk.Canvas(outer, highlightthickness=0, width=300)
         scrollbar = ttk.Scrollbar(outer, orient=tk.VERTICAL, command=canvas.yview)
@@ -170,7 +183,20 @@ class EpubLayoutApp:
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         content.bind("<Configure>", lambda _event: canvas.configure(scrollregion=canvas.bbox("all")))
         canvas.bind("<Configure>", lambda event: canvas.itemconfigure(window_id, width=event.width))
+        self.inspector_tabs[title] = outer
         return content
+
+    def _show_inspector_tab(self, title: str) -> None:
+        if title not in self.inspector_tabs:
+            return
+        self.active_inspector_tab = title
+        self.inspector_tabs[title].tkraise()
+        for tab_title, button in getattr(self, "inspector_tab_buttons", {}).items():
+            state = tk.DISABLED if tab_title == title else tk.NORMAL
+            try:
+                button.configure(state=state)
+            except tk.TclError:
+                pass
 
     def _build_edit_tab(self, parent: ttk.Frame) -> None:
         self._add_section_label(parent, "Insert")

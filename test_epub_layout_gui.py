@@ -247,6 +247,18 @@ class EpubLayoutGuiListTests(unittest.TestCase):
     def test_batch_inspector_sections_follow_batch_workflow(self):
         self.assertEqual(("Template", "Queue", "Preflight", "Export"), EpubLayoutApp._batch_section_titles())
 
+    def test_inspector_tab_state_switches_active_tab(self):
+        app = EpubLayoutApp.__new__(EpubLayoutApp)
+        app.inspector_tabs = {
+            "Edit": SimpleNamespace(raise_count=0, tkraise=lambda: None),
+            "Batch": SimpleNamespace(raise_count=0, tkraise=lambda: None),
+        }
+        app.inspector_tab_buttons = {}
+
+        app._show_inspector_tab("Batch")
+
+        self.assertEqual("Batch", app.active_inspector_tab)
+
     def test_bind_shortcuts_registers_safe_layout_actions(self):
         app = EpubLayoutApp.__new__(EpubLayoutApp)
         app.root = _FakeRoot()
