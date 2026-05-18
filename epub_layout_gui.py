@@ -35,6 +35,7 @@ class EpubLayoutApp:
         self.thumbnail_cache: dict[int, tk.PhotoImage] = {}
         self.deleted_entries: list[list[tuple[int, LayoutEntry]]] = []
         self.status = tk.StringVar(value="Open a PDF to begin.")
+        self.workspace_status = tk.StringVar(value="")
         self.apple_preview = tk.BooleanVar(value=True)
         self.title_var = tk.StringVar(value="")
         self.author_var = tk.StringVar(value="")
@@ -142,6 +143,8 @@ class EpubLayoutApp:
         statusbar = ttk.Frame(self.root, padding=(8, 4))
         statusbar.pack(side=tk.BOTTOM, fill=tk.X)
         ttk.Label(statusbar, textvariable=self.status).pack(side=tk.LEFT)
+        ttk.Label(statusbar, textvariable=self.workspace_status).pack(side=tk.RIGHT)
+        self.refresh_workspace_status()
 
     def _add_inspector_tab(self, notebook: ttk.Notebook, title: str) -> ttk.Frame:
         outer = ttk.Frame(notebook)
@@ -285,6 +288,27 @@ class EpubLayoutApp:
         refresh()
         entry.focus_set()
 
+    def _workspace_summary(self) -> str:
+        if self.model is None:
+            page_summary = "No PDF loaded"
+        else:
+            page_summary = f"Pages: {len(self.model.entries)}"
+        if self.batch_project is None:
+            return f"{page_summary} | Queue: 0"
+        items = self.batch_project.items
+        counts = {"Ready": 0, "Warning": 0, "Failed": 0}
+        for item in items:
+            if item.status in counts:
+                counts[item.status] += 1
+        return (
+            f"{page_summary} | Queue: {len(items)} | "
+            f"Ready: {counts['Ready']} | Warning: {counts['Warning']} | Failed: {counts['Failed']}"
+        )
+
+    def refresh_workspace_status(self) -> None:
+        if hasattr(self, "workspace_status"):
+            self.workspace_status.set(self._workspace_summary())
+
     def open_pdf(self) -> None:
         filename = filedialog.askopenfilename(
             title="Open PDF",
@@ -310,10 +334,12 @@ class EpubLayoutApp:
         if self.model.entries:
             self.page_list.selection_set(0)
         self.status.set(f"Loaded {self.pdf_path.name}: {len(self.model.entries)} pages")
+        self.refresh_workspace_status()
         self.refresh_preview()
 
     def refresh_list(self, preserve_yview: bool = False) -> None:
         if self.model is None:
+            self.refresh_workspace_status()
             return
         yview_start = self.page_list.yview()[0] if preserve_yview else None
         self.page_list.delete(0, tk.END)
@@ -323,6 +349,7 @@ class EpubLayoutApp:
             self.page_list.insert(tk.END, f"{i:04d} {marker}{cover} {entry.label}")
         if yview_start is not None:
             self.page_list.yview_moveto(yview_start)
+        self.refresh_workspace_status()
 
     def selected_index(self) -> int | None:
         selection = self.page_list.curselection()
@@ -611,6 +638,7 @@ class EpubLayoutApp:
             if item.error:
                 detail = f" ({item.error})"
             self.batch_list.insert(tk.END, f"{item.status} {item.pdf_path.name}{detail}")
+        self.refresh_workspace_status()
 
     def _batch_output_dir(self) -> Path | None:
         initial = getattr(self, "batch_output_dir", None) or getattr(self, "output_dir", Path.cwd())

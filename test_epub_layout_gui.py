@@ -278,6 +278,26 @@ class EpubLayoutGuiListTests(unittest.TestCase):
 
         self.assertTrue(app.insert_before)
 
+    def test_workspace_summary_reports_empty_workspace(self):
+        app = EpubLayoutApp.__new__(EpubLayoutApp)
+        app.model = None
+        app.batch_project = None
+
+        self.assertEqual("No PDF loaded | Queue: 0", app._workspace_summary())
+
+    def test_workspace_summary_reports_pages_and_batch_counts(self):
+        app = EpubLayoutApp.__new__(EpubLayoutApp)
+        app.model = SimpleNamespace(entries=[_entry("Page 1"), _entry("Page 2")])
+        app.batch_project = _FakeBatchProject()
+        app.batch_project.items = [
+            SimpleNamespace(status="Ready"),
+            SimpleNamespace(status="Warning"),
+            SimpleNamespace(status="Failed"),
+            SimpleNamespace(status="Pending"),
+        ]
+
+        self.assertEqual("Pages: 2 | Queue: 4 | Ready: 1 | Warning: 1 | Failed: 1", app._workspace_summary())
+
     def test_run_background_sets_and_clears_busy_state(self):
         app = EpubLayoutApp.__new__(EpubLayoutApp)
         app.root = _FakeRoot()

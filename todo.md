@@ -382,16 +382,16 @@ Files:
 
 Detailed tasks:
 
-- [ ] Add tests for a workspace summary string with no PDF loaded.
-- [ ] Add tests for a workspace summary string with page count and batch counts.
-- [ ] Add a second status variable for persistent workspace summary.
-- [ ] Show transient status on the left side of the bottom bar.
-- [ ] Show persistent workspace summary on the right side of the bottom bar.
-- [ ] Update the summary after opening PDFs, refreshing the spine list, adding PDFs, validating batches, and exporting batches.
-- [ ] Include ready/warning/failed batch counts when a batch project exists.
-- [ ] Keep wording compact enough for small windows.
-- [ ] Run focused GUI tests, then full verification.
-- [ ] Commit with: `feat: add workspace status summary`
+- [x] Add tests for a workspace summary string with no PDF loaded.
+- [x] Add tests for a workspace summary string with page count and batch counts.
+- [x] Add a second status variable for persistent workspace summary.
+- [x] Show transient status on the left side of the bottom bar.
+- [x] Show persistent workspace summary on the right side of the bottom bar.
+- [x] Update the summary after opening PDFs, refreshing the spine list, adding PDFs, validating batches, and exporting batches.
+- [x] Include ready/warning/failed batch counts when a batch project exists.
+- [x] Keep wording compact enough for small windows.
+- [x] Run focused GUI tests, then full verification.
+- [x] Commit with: `feat: add workspace status summary`
 
 ## UI Refresh Completion Checklist
 
