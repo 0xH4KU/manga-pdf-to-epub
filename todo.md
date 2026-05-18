@@ -219,22 +219,22 @@ Files:
 
 Detailed tasks:
 
-- [ ] Add an internal EPUB self-check helper that validates:
+- [x] Add an internal EPUB self-check helper that validates:
   - `mimetype` is first and stored.
   - `META-INF/container.xml` exists.
   - `EPUB/content.opf` exists.
   - every spine `idref` has a manifest XHTML item.
   - every XHTML/image href referenced by OPF exists in the zip.
   - cover image property points to an image item that exists.
-- [ ] Run self-check automatically after EPUB export.
-- [ ] Keep self-check errors as `PdfImageError` with specific messages.
-- [ ] Decide and document timestamp behavior:
+- [x] Run self-check automatically after EPUB export.
+- [x] Keep self-check errors as `PdfImageError` with specific messages.
+- [x] Decide and document timestamp behavior:
   - keep deterministic default if reproducibility is preferred.
   - or write current UTC modified time if real metadata freshness is preferred.
-- [ ] Add tests for a valid generated EPUB passing self-check.
-- [ ] Add unit tests for broken OPF references failing self-check.
-- [ ] Run focused tests, then full verification.
-- [ ] Commit with: `feat: validate generated epub structure`
+- [x] Add tests for a valid generated EPUB passing self-check.
+- [x] Add unit tests for broken OPF references failing self-check.
+- [x] Run focused tests, then full verification.
+- [x] Commit with: `feat: validate generated epub structure`
 
 ## Wave 7 - Documentation Refresh
 

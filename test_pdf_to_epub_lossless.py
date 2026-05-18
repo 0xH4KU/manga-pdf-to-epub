@@ -3,7 +3,8 @@ import unittest
 from pathlib import Path
 from zipfile import ZIP_STORED, ZipFile
 
-from pdf_to_epub_lossless import convert_pdf_to_epub
+from pdf_to_cbz_lossless import PdfImageError
+from pdf_to_epub_lossless import _validate_epub_structure, convert_pdf_to_epub
 from test_pdf_to_cbz_lossless import _two_page_pdf_with_late_cover
 
 
@@ -172,6 +173,58 @@ class PdfToEpubLosslessTests(unittest.TestCase):
                 self.assertIn('idref="page-0002"', opf)
                 self.assertNotIn("Page 1", nav)
                 self.assertIn("Page 2", nav)
+
+    def test_valid_generated_epub_passes_structure_validation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            pdf_path = Path(tmp) / "comic.pdf"
+            epub_path = Path(tmp) / "comic.epub"
+            pdf_path.write_bytes(_two_page_pdf_with_late_cover())
+            convert_pdf_to_epub(pdf_path, epub_path, title="Comic")
+
+            _validate_epub_structure(epub_path)
+
+    def test_structure_validation_rejects_missing_spine_manifest_item(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            epub_path = Path(tmp) / "broken.epub"
+            with ZipFile(epub_path, "w") as archive:
+                archive.writestr("mimetype", b"application/epub+zip")
+                archive.writestr("META-INF/container.xml", b"<container/>")
+                archive.writestr("EPUB/nav.xhtml", b"<html/>")
+                archive.writestr(
+                    "EPUB/content.opf",
+                    """<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://www.idpf.org/2007/opf">
+  <manifest>
+    <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml"/>
+  </manifest>
+  <spine><itemref idref="missing-page"/></spine>
+</package>
+""",
+                )
+
+            with self.assertRaisesRegex(PdfImageError, "Spine itemref missing-page has no manifest item"):
+                _validate_epub_structure(epub_path)
+
+    def test_structure_validation_rejects_missing_manifest_href(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            epub_path = Path(tmp) / "broken.epub"
+            with ZipFile(epub_path, "w") as archive:
+                archive.writestr("mimetype", b"application/epub+zip")
+                archive.writestr("META-INF/container.xml", b"<container/>")
+                archive.writestr(
+                    "EPUB/content.opf",
+                    """<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://www.idpf.org/2007/opf">
+  <manifest>
+    <item id="page-0001" href="xhtml/page-0001.xhtml" media-type="application/xhtml+xml"/>
+  </manifest>
+  <spine><itemref idref="page-0001"/></spine>
+</package>
+""",
+                )
+
+            with self.assertRaisesRegex(PdfImageError, "Manifest href missing from EPUB: EPUB/xhtml/page-0001.xhtml"):
+                _validate_epub_structure(epub_path)
 
 
 if __name__ == "__main__":
