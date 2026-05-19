@@ -56,6 +56,32 @@ class SeriesProject:
         volume.status = "Ready"
         volume.error = None
 
+    def volumes_for_scope(self, scope: str) -> list[SeriesVolume]:
+        scope = scope.strip().casefold()
+        if scope == "all":
+            return list(self.volumes)
+        if not scope:
+            return []
+        requested_numbers: set[int] = set()
+        for token in scope.split(","):
+            token = token.strip()
+            if not token:
+                continue
+            if "-" in token:
+                start_text, end_text = (part.strip() for part in token.split("-", 1))
+                if not start_text.isdigit() or not end_text.isdigit():
+                    raise ValueError(f"Invalid volume scope: {token}")
+                start = int(start_text)
+                end = int(end_text)
+                if start > end:
+                    raise ValueError(f"Invalid volume scope: {token}")
+                requested_numbers.update(range(start, end + 1))
+                continue
+            if not token.isdigit():
+                raise ValueError(f"Invalid volume scope: {token}")
+            requested_numbers.add(int(token))
+        return [volume for volume in self.volumes if volume.volume_number in requested_numbers]
+
     def export_ready(self, output_dir: Path) -> dict[str, int]:
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)

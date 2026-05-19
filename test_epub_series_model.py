@@ -120,6 +120,28 @@ class EpubSeriesModelTests(unittest.TestCase):
 
             self.assertEqual("Ready", project.volumes[0].status)
 
+    def test_volumes_for_scope_accepts_commas_ranges_and_all(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            paths = []
+            for number in (1, 2, 3, 7):
+                path = Path(tmp) / f"Series Vol.{number:02d}.pdf"
+                path.write_bytes(_two_page_pdf_with_late_cover())
+                paths.append(path)
+            project = SeriesProject.from_pdfs(paths, title="Series")
+
+            self.assertEqual([1, 2, 7], [volume.volume_number for volume in project.volumes_for_scope("1,2,7")])
+            self.assertEqual([1, 2, 3], [volume.volume_number for volume in project.volumes_for_scope("1-3")])
+            self.assertEqual([1, 2, 3, 7], [volume.volume_number for volume in project.volumes_for_scope("all")])
+
+    def test_volumes_for_scope_rejects_invalid_tokens(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            pdf_path = Path(tmp) / "Series Vol.01.pdf"
+            pdf_path.write_bytes(_two_page_pdf_with_late_cover())
+            project = SeriesProject.from_pdfs([pdf_path], title="Series")
+
+            with self.assertRaisesRegex(ValueError, "Invalid volume scope"):
+                project.volumes_for_scope("first")
+
 
 if __name__ == "__main__":
     unittest.main()

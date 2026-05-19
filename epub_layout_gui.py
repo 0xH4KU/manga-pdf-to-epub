@@ -828,16 +828,63 @@ class EpubLayoutApp:
         if not filename:
             return
         try:
-            self.model.apply_preset(Path(filename))
+            preset_path = Path(filename)
+            if self.series_project is not None:
+                self._load_preset_for_series(preset_path)
+            else:
+                self._load_preset_for_current_model(preset_path)
+        except Exception as exc:
+            messagebox.showerror("Load preset failed", str(exc))
+
+    def _load_preset_for_current_model(self, preset_path: Path) -> None:
+        if self.model is None:
+            return
+        self.model.apply_preset(preset_path)
+        self._load_metadata_fields()
+        self.refresh_list()
+        self.page_list.selection_clear(0, tk.END)
+        if self.model.entries:
+            self.page_list.selection_set(0)
+        self.refresh_preview()
+        self.status.set(f"Loaded preset: {preset_path.name}")
+
+    def _load_preset_for_series(self, preset_path: Path) -> None:
+        if self.series_project is None:
+            return
+        scope = simpledialog.askstring(
+            "Apply Preset to Volumes",
+            "Volumes to apply preset to (examples: 1,2,7 or 1-7 or all):",
+            parent=getattr(self, "root", None),
+        )
+        if scope is None or not scope.strip():
+            return
+        target_volumes = self.series_project.volumes_for_scope(scope)
+        if not target_volumes:
+            self.status.set("No volumes matched preset scope.")
+            return
+        active_volume = getattr(self, "active_series_volume", None)
+        active_was_updated = False
+        for volume in target_volumes:
+            model = self.series_project.model_for_volume(volume)
+            model.apply_preset(preset_path)
+            model.title = self.series_project.generated_title(volume)
+            model.author = self.series_project.author
+            model.language = self.series_project.language
+            volume.status = "Edited"
+            volume.error = None
+            if volume is active_volume:
+                active_was_updated = True
+        self.refresh_series_list()
+        self._restore_active_series_selection()
+        self.refresh_workspace_status()
+        if active_was_updated:
             self._load_metadata_fields()
             self.refresh_list()
             self.page_list.selection_clear(0, tk.END)
-            if self.model.entries:
+            if self.model is not None and self.model.entries:
                 self.page_list.selection_set(0)
             self.refresh_preview()
-            self.status.set(f"Loaded preset: {Path(filename).name}")
-        except Exception as exc:
-            messagebox.showerror("Load preset failed", str(exc))
+        self.status.set(f"Loaded preset for {len(target_volumes)} volumes: {preset_path.name}")
 
     def _load_metadata_fields(self) -> None:
         if self.model is None:

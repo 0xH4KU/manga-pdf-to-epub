@@ -190,6 +190,20 @@ class _FakeDeleteModel:
         return to_index
 
 
+class _FakePresetModel(_FakeDeleteModel):
+    def __init__(self, entries):
+        super().__init__(entries)
+        self.applied_presets = []
+        self.title = "Book"
+        self.author = ""
+        self.language = "zh-Hant"
+        self.source_path = Path("/tmp/book.pdf")
+        self.exclude_cover_from_reading = False
+
+    def apply_preset(self, preset_path):
+        self.applied_presets.append(Path(preset_path))
+
+
 def _entry(label, is_blank=False):
     source_index = None if is_blank else int(label.split()[-1])
     return SimpleNamespace(label=label, is_blank=is_blank, source_index=source_index)
@@ -1258,6 +1272,80 @@ class EpubLayoutGuiListTests(unittest.TestCase):
         self.assertEqual("淺野一二O", app.author_value)
         self.assertEqual("ja", app.language_value)
         self.assertTrue(app.exclude_cover_var.get())
+
+    def test_load_preset_single_pdf_mode_applies_to_current_model_without_scope_prompt(self):
+        app = EpubLayoutApp.__new__(EpubLayoutApp)
+        app.model = _FakePresetModel([_entry("Page 1")])
+        app.series_project = None
+        app.page_list = _FakeListbox(selection=0)
+        app.status = _FakeStatus()
+        app._load_metadata_fields = lambda: setattr(app, "metadata_loaded", True)
+        app.refresh_list = lambda: setattr(app, "list_refreshed", True)
+        app.refresh_preview = lambda: setattr(app, "preview_refreshed", True)
+
+        with patch("epub_layout_gui.filedialog.askopenfilename", return_value="/tmp/layout.json"), \
+            patch("epub_layout_gui.simpledialog.askstring") as askstring:
+            app.load_preset()
+
+        self.assertEqual([Path("/tmp/layout.json")], app.model.applied_presets)
+        askstring.assert_not_called()
+        self.assertEqual("Loaded preset: layout.json", app.status.value)
+
+    def test_load_preset_series_mode_prompts_scope_and_applies_to_matching_volumes(self):
+        app = EpubLayoutApp.__new__(EpubLayoutApp)
+        active_model = _FakePresetModel([_entry("Page 1")])
+        inactive_model = _FakePresetModel([_entry("Page 1")])
+        volumes = [
+            SimpleNamespace(volume_number=1, status="Ready", layout_model=active_model),
+            SimpleNamespace(volume_number=2, status="Unreviewed", layout_model=inactive_model),
+            SimpleNamespace(volume_number=7, status="Unreviewed", layout_model=_FakePresetModel([_entry("Page 1")])),
+        ]
+        project = SimpleNamespace(
+            volumes=volumes,
+            model_for_volume=lambda volume: volume.layout_model,
+            volumes_for_scope=lambda scope: [volumes[0], volumes[2]] if scope == "1,7" else [],
+            generated_title=lambda volume: f"Series Vol.{volume.volume_number:02d}",
+            title="Series",
+            author="Author",
+            language="ja",
+        )
+        app.model = active_model
+        app.series_project = project
+        app.active_series_volume = volumes[0]
+        app.series_list = _FakeListbox(selection=0)
+        app.page_list = _FakeListbox(selection=0)
+        app.status = _FakeStatus()
+        app._load_metadata_fields = lambda: setattr(app, "metadata_loaded", True)
+        app.refresh_list = lambda: setattr(app, "list_refreshed", True)
+        app.refresh_preview = lambda: setattr(app, "preview_refreshed", True)
+        app.refresh_series_list = lambda: setattr(app, "series_refreshed", True)
+        app.refresh_workspace_status = lambda: setattr(app, "workspace_refreshed", True)
+
+        with patch("epub_layout_gui.filedialog.askopenfilename", return_value="/tmp/layout.json"), \
+            patch("epub_layout_gui.simpledialog.askstring", return_value="1,7"):
+            app.load_preset()
+
+        self.assertEqual([Path("/tmp/layout.json")], volumes[0].layout_model.applied_presets)
+        self.assertEqual([], volumes[1].layout_model.applied_presets)
+        self.assertEqual([Path("/tmp/layout.json")], volumes[2].layout_model.applied_presets)
+        self.assertEqual(["Edited", "Unreviewed", "Edited"], [volume.status for volume in volumes])
+        self.assertTrue(app.list_refreshed)
+        self.assertTrue(app.preview_refreshed)
+        self.assertTrue(app.series_refreshed)
+        self.assertEqual("Loaded preset for 2 volumes: layout.json", app.status.value)
+
+    def test_load_preset_series_mode_cancels_when_scope_is_blank(self):
+        app = EpubLayoutApp.__new__(EpubLayoutApp)
+        app.model = _FakePresetModel([_entry("Page 1")])
+        app.series_project = SimpleNamespace(volumes=[])
+        app.status = _FakeStatus()
+
+        with patch("epub_layout_gui.filedialog.askopenfilename", return_value="/tmp/layout.json"), \
+            patch("epub_layout_gui.simpledialog.askstring", return_value=""):
+            app.load_preset()
+
+        self.assertEqual([], app.model.applied_presets)
+        self.assertIsNone(app.status.value)
 
 
 if __name__ == "__main__":
