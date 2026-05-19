@@ -5,6 +5,7 @@ from pathlib import Path
 from zipfile import ZipFile
 
 from epub_layout_model import LayoutModel
+from pdf_to_cbz_lossless import PdfImageError
 from test_pdf_to_cbz_lossless import _pdf_from_objects, _stream_object, _two_page_pdf_with_late_cover
 
 
@@ -56,6 +57,27 @@ def _four_page_pdf():
             (12, _stream_object(image_template, b"\xff\xd8PAGE2\xff\xd9")),
             (13, _stream_object(image_template, b"\xff\xd8PAGE3\xff\xd9")),
             (14, _stream_object(image_template, b"\xff\xd8PAGE4\xff\xd9")),
+        ]
+    )
+
+
+def _one_page_pdf():
+    draw = b"q 2 0 0 1 0 0 cm /Im0 Do Q"
+    image_template = (
+        b"<< /Type /XObject /Subtype /Image /Width 2 /Height 1 "
+        b"/BitsPerComponent 8 /ColorSpace /DeviceRGB /Filter /DCTDecode /Length __LEN__ >>"
+    )
+    return _pdf_from_objects(
+        [
+            (1, b"<< /Type /Catalog /Pages 2 0 R >>"),
+            (2, b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            (
+                3,
+                b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 2 1] "
+                b"/Resources << /XObject << /Im0 5 0 R >> >> /Contents 4 0 R >>",
+            ),
+            (4, _stream_object(b"<< /Length __LEN__ >>", draw)),
+            (5, _stream_object(image_template, b"\xff\xd8PAGE1\xff\xd9")),
         ]
     )
 
@@ -496,6 +518,19 @@ class EpubLayoutModelTests(unittest.TestCase):
                 self.assertIn('properties="cover-image"', opf)
                 self.assertNotIn('idref="page-0001"', opf)
                 self.assertIn('idref="page-0002"', opf)
+
+    def test_model_rejects_cover_only_export_without_reading_pages(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            pdf_path = Path(tmp) / "comic.pdf"
+            epub_path = Path(tmp) / "comic.epub"
+            pdf_path.write_bytes(_one_page_pdf())
+            model = LayoutModel.from_pdf(pdf_path)
+            model.exclude_cover_from_reading = True
+
+            with self.assertRaisesRegex(PdfImageError, "Cover-only export would leave no reading pages"):
+                model.export_epub(epub_path, overwrite=True, title="Comic")
+
+            self.assertFalse(epub_path.exists())
 
 
 if __name__ == "__main__":

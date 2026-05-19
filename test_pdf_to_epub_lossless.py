@@ -7,7 +7,7 @@ from contextlib import redirect_stderr
 from unittest.mock import patch
 
 from pdf_to_cbz_lossless import PdfImageError
-from pdf_to_epub_lossless import _validate_epub_structure, convert_pdf_to_epub, main
+from pdf_to_epub_lossless import EpubPage, _validate_epub_structure, convert_pdf_to_epub, main, write_epub_from_pages
 from test_pdf_to_cbz_lossless import _two_page_pdf_with_late_cover
 
 
@@ -191,6 +191,59 @@ class PdfToEpubLosslessTests(unittest.TestCase):
                 self.assertIn('idref="page-0002"', opf)
                 self.assertNotIn("Page 1", nav)
                 self.assertIn("Page 2", nav)
+
+    def test_invalid_cover_item_id_is_rejected_before_writing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            epub_path = Path(tmp) / "comic.epub"
+            page = EpubPage(
+                index=1,
+                width=2,
+                height=1,
+                image_href="images/page-0001.jpg",
+                image_media_type="image/jpeg",
+                image_data=b"\xff\xd8PAGE1\xff\xd9",
+                xhtml_href="xhtml/page-0001.xhtml",
+                item_id="page-0001",
+                label="Page 1",
+            )
+
+            with self.assertRaisesRegex(PdfImageError, "Invalid cover item ID: missing-page"):
+                write_epub_from_pages(
+                    [page],
+                    epub_path,
+                    source_path=Path(tmp) / "comic.pdf",
+                    title="Comic",
+                    cover_item_id="missing-page",
+                )
+
+            self.assertFalse(epub_path.exists())
+
+    def test_cover_only_cannot_remove_all_reading_pages(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            epub_path = Path(tmp) / "comic.epub"
+            page = EpubPage(
+                index=1,
+                width=2,
+                height=1,
+                image_href="images/page-0001.jpg",
+                image_media_type="image/jpeg",
+                image_data=b"\xff\xd8PAGE1\xff\xd9",
+                xhtml_href="xhtml/page-0001.xhtml",
+                item_id="page-0001",
+                label="Page 1",
+            )
+
+            with self.assertRaisesRegex(PdfImageError, "Cover-only export would leave no reading pages"):
+                write_epub_from_pages(
+                    [page],
+                    epub_path,
+                    source_path=Path(tmp) / "comic.pdf",
+                    title="Comic",
+                    cover_item_id="page-0001",
+                    exclude_cover_from_reading=True,
+                )
+
+            self.assertFalse(epub_path.exists())
 
     def test_valid_generated_epub_passes_structure_validation(self):
         with tempfile.TemporaryDirectory() as tmp:

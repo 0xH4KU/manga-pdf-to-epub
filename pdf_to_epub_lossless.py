@@ -92,7 +92,10 @@ def write_epub_from_pages(
     identifier = f"urn:uuid:{uuid.uuid5(uuid.NAMESPACE_URL, source_path.resolve().as_uri())}"
 
     cover_id = cover_item_id or _first_image_item_id(pages)
+    _validate_cover_item_id(pages, cover_id)
     reading_pages = _reading_pages(pages, cover_id, exclude_cover_from_reading)
+    if not reading_pages:
+        raise PdfImageError("Cover-only export would leave no reading pages")
 
     with ZipFile(epub_path, "w") as archive:
         _write_stored(archive, "mimetype", b"application/epub+zip")
@@ -331,6 +334,14 @@ def _first_image_item_id(pages: list[EpubPage]) -> str | None:
         if not page.is_blank:
             return page.item_id
     return None
+
+
+def _validate_cover_item_id(pages: list[EpubPage], cover_item_id: str | None) -> None:
+    if cover_item_id is None:
+        return
+    if any(not page.is_blank and page.item_id == cover_item_id for page in pages):
+        return
+    raise PdfImageError(f"Invalid cover item ID: {cover_item_id}")
 
 
 def _reading_pages(pages: list[EpubPage], cover_item_id: str | None, exclude_cover_from_reading: bool) -> list[EpubPage]:
