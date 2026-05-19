@@ -34,6 +34,7 @@ class EpubLayoutApp:
         self.photo_refs: list[tk.PhotoImage] = []
         self.thumbnail_cache: dict[int, tk.PhotoImage] = {}
         self.deleted_entries: list[list[tuple[int, LayoutEntry]]] = []
+        self.ready_status_undo: list[list[tuple[SeriesVolume, str]]] = []
         self.status = tk.StringVar(value="Open a PDF to begin.")
         self.workspace_status = tk.StringVar(value="")
         self.apple_preview = tk.BooleanVar(value=True)
@@ -266,6 +267,7 @@ class EpubLayoutApp:
     def _build_series_tab(self, parent: ttk.Frame) -> None:
         self._add_section_label(parent, "Review")
         self._add_panel_button(parent, "Mark Selected Volume Ready", self.mark_selected_series_volume_ready)
+        self._add_panel_button(parent, "Undo Ready Mark", self.undo_ready_mark)
         self._add_section_gap(parent)
         self._add_section_label(parent, "Export")
         self._add_panel_button(parent, "Export Ready Series...", self.export_ready_series)
@@ -442,6 +444,7 @@ class EpubLayoutApp:
         if not selection:
             return
         selected_volumes = [self.series_project.volumes[index] for index in selection]
+        self._record_ready_status_undo(selected_volumes)
         for volume in selected_volumes:
             self.series_project.mark_ready(volume)
         self.refresh_series_list()
@@ -450,6 +453,28 @@ class EpubLayoutApp:
             self.status.set(f"Marked Vol.{selected_volumes[0].volume_number:02d} ready.")
         else:
             self.status.set(f"Marked {len(selected_volumes)} volumes ready.")
+
+    def _record_ready_status_undo(self, volumes: list[SeriesVolume]) -> None:
+        if not hasattr(self, "ready_status_undo"):
+            self.ready_status_undo = []
+        self.ready_status_undo.append([(volume, volume.status) for volume in volumes])
+
+    def undo_ready_mark(self) -> bool:
+        undo_stack = getattr(self, "ready_status_undo", [])
+        if not undo_stack:
+            return False
+        previous_statuses = undo_stack.pop()
+        for volume, previous_status in previous_statuses:
+            volume.status = previous_status
+            volume.error = None
+        self.refresh_series_list()
+        self.refresh_workspace_status()
+        if len(previous_statuses) == 1:
+            volume = previous_statuses[0][0]
+            self.status.set(f"Restored Vol.{volume.volume_number:02d} status.")
+        else:
+            self.status.set(f"Restored {len(previous_statuses)} volume statuses.")
+        return True
 
     def export_ready_series(self) -> None:
         if self.series_project is None:
@@ -648,7 +673,10 @@ class EpubLayoutApp:
             messagebox.showerror("Delete page failed", str(exc))
 
     def recover_last_deleted(self) -> None:
-        if self.model is None or not self.deleted_entries:
+        if self.model is None:
+            return
+        if not self.deleted_entries:
+            self.undo_ready_mark()
             return
         group = self.deleted_entries.pop()
         restored_indexes: list[int] = []

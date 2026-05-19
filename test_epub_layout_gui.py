@@ -457,6 +457,7 @@ class EpubLayoutGuiListTests(unittest.TestCase):
         self.assertNotIn("Export Ready...", labels)
         self.assertNotIn("Export All...", labels)
         self.assertIn("Mark Selected Volume Ready", labels)
+        self.assertIn("Undo Ready Mark", labels)
         self.assertIn("Export Ready Series...", labels)
         self.assertNotIn("Delete First...", labels)
         self.assertNotIn("Delete Last...", labels)
@@ -754,6 +755,60 @@ class EpubLayoutGuiListTests(unittest.TestCase):
         self.assertTrue(app.series_refreshed)
         self.assertTrue(app.workspace_refreshed)
         self.assertEqual("Marked 3 volumes ready.", app.status.value)
+
+    def test_undo_ready_mark_restores_previous_volume_statuses(self):
+        app = EpubLayoutApp.__new__(EpubLayoutApp)
+        volumes = [
+            SimpleNamespace(status="Edited", volume_number=1, pdf_path=Path("/tmp/vol01.pdf")),
+            SimpleNamespace(status="Unreviewed", volume_number=2, pdf_path=Path("/tmp/vol02.pdf")),
+        ]
+        project = SimpleNamespace(
+            volumes=volumes,
+            mark_ready=lambda selected: setattr(selected, "status", "Ready"),
+        )
+        app.series_project = project
+        app.series_list = _FakeListbox(selection=(0, 1))
+        app.status = _FakeStatus()
+        app.refresh_series_list = lambda: setattr(app, "series_refreshed", True)
+        app.refresh_workspace_status = lambda: setattr(app, "workspace_refreshed", True)
+
+        app.mark_selected_series_volume_ready()
+        app.undo_ready_mark()
+
+        self.assertEqual(["Edited", "Unreviewed"], [volume.status for volume in volumes])
+        self.assertTrue(app.series_refreshed)
+        self.assertTrue(app.workspace_refreshed)
+        self.assertEqual("Restored 2 volume statuses.", app.status.value)
+
+    def test_recover_last_deleted_falls_back_to_ready_mark_undo(self):
+        app = EpubLayoutApp.__new__(EpubLayoutApp)
+        volume = SimpleNamespace(status="Edited", volume_number=1, pdf_path=Path("/tmp/vol01.pdf"))
+        project = SimpleNamespace(
+            volumes=[volume],
+            mark_ready=lambda selected: setattr(selected, "status", "Ready"),
+        )
+        app.model = _FakeDeleteModel([_entry("Page 1")])
+        app.deleted_entries = []
+        app.series_project = project
+        app.series_list = _FakeListbox(selection=0)
+        app.status = _FakeStatus()
+        app.refresh_series_list = lambda: setattr(app, "series_refreshed", True)
+        app.refresh_workspace_status = lambda: setattr(app, "workspace_refreshed", True)
+
+        app.mark_selected_series_volume_ready()
+        app.recover_last_deleted()
+
+        self.assertEqual("Edited", volume.status)
+        self.assertEqual("Restored Vol.01 status.", app.status.value)
+
+    def test_undo_ready_mark_without_history_is_noop(self):
+        app = EpubLayoutApp.__new__(EpubLayoutApp)
+        app.status = _FakeStatus()
+
+        restored = app.undo_ready_mark()
+
+        self.assertFalse(restored)
+        self.assertIsNone(app.status.value)
 
     def test_export_ready_series_uses_series_project(self):
         app = EpubLayoutApp.__new__(EpubLayoutApp)
