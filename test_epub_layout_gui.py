@@ -377,6 +377,82 @@ class EpubLayoutGuiListTests(unittest.TestCase):
         self.assertIn("Preview Apple Books cover gap", labels)
         self.assertNotIn("Apple Books-like cover-right gap", labels)
 
+    def test_batch_queue_is_scoped_to_batch_tab(self):
+        app = EpubLayoutApp.__new__(EpubLayoutApp)
+        app.root = _FakeRoot()
+        app.apple_preview = _FakeBool(True)
+        app.title_var = SimpleNamespace()
+        app.author_var = SimpleNamespace()
+        app.language_var = SimpleNamespace()
+        app.exclude_cover_var = _FakeBool(False)
+        app.inspector_tabs = {}
+        app.inspector_tab_buttons = {}
+        app.status = _FakeStatus()
+        app.workspace_status = _FakeStatus()
+        app.refresh_preview = lambda: None
+        app.refresh_workspace_status = lambda: None
+        widgets = []
+
+        class FakeFrame(_FakeWidget):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                self.parent = args[0] if args else None
+                self.options = kwargs
+                widgets.append(self)
+
+        class FakePanedwindow(FakeFrame):
+            pass
+
+        class FakeButton(FakeFrame):
+            pass
+
+        class FakeLabel(FakeFrame):
+            pass
+
+        class FakeCheckbutton(FakeFrame):
+            pass
+
+        class FakeListbox(FakeFrame):
+            def bind(self, *_args, **_kwargs):
+                pass
+
+            def yview(self, *_args, **_kwargs):
+                pass
+
+        class FakeCanvas(FakeListbox):
+            def create_window(self, *_args, **_kwargs):
+                return 1
+
+            def itemconfigure(self, *_args, **_kwargs):
+                pass
+
+            def bbox(self, *_args, **_kwargs):
+                return (0, 0, 1, 1)
+
+        with patch("epub_layout_gui.ttk.Frame", FakeFrame), \
+            patch("epub_layout_gui.ttk.Panedwindow", FakePanedwindow), \
+            patch("epub_layout_gui.ttk.Button", FakeButton), \
+            patch("epub_layout_gui.ttk.Label", FakeLabel), \
+            patch("epub_layout_gui.ttk.Checkbutton", FakeCheckbutton), \
+            patch("epub_layout_gui.ttk.Scrollbar", FakeButton), \
+            patch("epub_layout_gui.ttk.Separator", FakeButton), \
+            patch("epub_layout_gui.ttk.Entry", FakeButton), \
+            patch("epub_layout_gui.tk.Listbox", FakeListbox), \
+            patch("epub_layout_gui.tk.Canvas", FakeCanvas):
+            app._build_ui()
+
+        labels = [widget.options.get("text") for widget in widgets]
+        self.assertNotIn("Batch queue", labels)
+
+        batch_queue_parent = app.batch_list.parent
+        parent_labels = [
+            widget.options.get("text")
+            for widget in widgets
+            if widget.parent is batch_queue_parent
+        ]
+        self.assertIn("Queue", parent_labels)
+        self.assertIn("Add PDFs...", parent_labels)
+
     def test_bind_shortcuts_registers_safe_layout_actions(self):
         app = EpubLayoutApp.__new__(EpubLayoutApp)
         app.root = _FakeRoot()

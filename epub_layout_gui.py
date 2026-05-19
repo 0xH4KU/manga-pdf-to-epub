@@ -128,9 +128,6 @@ class EpubLayoutApp:
         self.page_list.bind("<<ListboxSelect>>", lambda _event: self.refresh_preview())
         self.page_list.bind("<ButtonPress-1>", self._page_drag_start)
         self.page_list.bind("<ButtonRelease-1>", self._page_drag_release)
-        ttk.Label(left, text="Batch queue").pack(anchor=tk.W)
-        self.batch_list = tk.Listbox(left, exportselection=False, height=7)
-        self.batch_list.pack(fill=tk.X, pady=(6, 0))
 
         center = ttk.Frame(main, padding=8)
         main.add(center, weight=3)
@@ -246,6 +243,8 @@ class EpubLayoutApp:
         self._add_panel_button(parent, "Load Template Preset...", self.load_batch_template_from_preset)
         self._add_section_gap(parent)
         self._add_section_label(parent, "Queue")
+        self.batch_list = tk.Listbox(parent, exportselection=False, height=8)
+        self.batch_list.pack(fill=tk.X, pady=(6, 0))
         self._add_panel_button(parent, "Add PDFs...", self.add_batch_pdfs)
         self._add_section_gap(parent)
         self._add_section_label(parent, "Preflight")
