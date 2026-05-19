@@ -30,7 +30,7 @@ This tool focuses on the boring-but-crucial details:
 - PDF Flate image streams are wrapped into PNG containers.
 - PDF to CBZ export with page-tree order preservation.
 - Tkinter GUI for manual manga layout tuning.
-- Apple Books-like preview mode with a virtual blank page on the right of the first spine item.
+- Preview-only Apple Books cover-gap mode with a virtual blank page on the right of the first spine item.
 - Arbitrary blank page insertion before or after selected pages.
 - Page deletion with recover support.
 - Preset save/load for applying the same layout correction to multiple volumes.
@@ -58,7 +58,7 @@ Launch the layout editor:
 Typical Apple Books manga workflow:
 
 1. Open a PDF volume.
-2. Keep `Apple Books-like cover-right gap` enabled.
+2. Keep `Preview Apple Books cover gap` enabled.
 3. Inspect spreads in the preview.
 4. Insert blank pages where needed to realign double-page artwork.
 5. Delete unwanted pages if necessary. Use single-page delete, `Delete First...`, `Delete Last...`, or `Delete Range...`; quick delete numbers refer to the current left-side spine positions.
@@ -116,6 +116,8 @@ Export multiple PDFs into a directory:
   --overwrite
 ```
 
+For OPF spread metadata, `--pair-first-two-pages` explicitly marks the first two source pages as a right-to-left spread pair. `--apple-books` instead writes centered single-page spread metadata for every reading page; these modes are mutually exclusive.
+
 Export CBZ:
 
 ```bash
@@ -126,7 +128,7 @@ Export CBZ:
 
 The GUI preview deliberately models Apple Books' cover behavior by adding a virtual blank page on the right of the first spine item. This virtual page is not exported into the EPUB. It is only a preview aid so you can decide whether to insert a real blank page into the EPUB spine.
 
-If Apple Books shifts spreads after import, try inserting a real blank page before the cover, then preview again with Apple Books-like mode enabled.
+If Apple Books shifts spreads after import, try inserting a real blank page before the cover, then preview again with `Preview Apple Books cover gap` enabled.
 
 ## EPUB Validation
 

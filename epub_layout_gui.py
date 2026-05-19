@@ -139,7 +139,7 @@ class EpubLayoutApp:
         ttk.Label(preview_header, text="RTL spread preview").pack(side=tk.LEFT)
         ttk.Checkbutton(
             preview_header,
-            text="Apple Books-like cover-right gap",
+            text="Preview Apple Books cover gap",
             variable=self.apple_preview,
             command=self.refresh_preview,
         ).pack(side=tk.RIGHT)

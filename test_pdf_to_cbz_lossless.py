@@ -5,8 +5,9 @@ import unittest
 import zlib
 from pathlib import Path
 from zipfile import ZIP_STORED, ZipFile
+from unittest.mock import patch
 
-from pdf_to_cbz_lossless import convert_pdf_to_cbz, flate_image_to_png, iter_image_streams
+from pdf_to_cbz_lossless import PdfImageError, convert_pdf_to_cbz, flate_image_to_png, images_in_pdf_page_order, iter_image_streams
 
 
 def _png_predict_none(rows):
@@ -93,25 +94,17 @@ def _two_page_pdf_with_late_cover(cover_bytes=b"\xff\xd8COVER\xff\xd9", page2_by
 class PdfToCbzLosslessTests(unittest.TestCase):
     def test_dct_image_stream_is_copied_to_cbz_without_reencoding(self):
         jpeg = b"\xff\xd8JPEG-DATA\xff\xd9"
-        pdf = _minimal_pdf(
-            [
-                (
-                    b"<< /Type /XObject /Subtype /Image /Width 2 /Height 1 "
-                    b"/BitsPerComponent 8 /ColorSpace /DeviceRGB /Filter /DCTDecode /Length __LEN__ >>",
-                    jpeg,
-                )
-            ]
-        )
+        page2 = b"\xff\xd8PAGE2\xff\xd9"
         with tempfile.TemporaryDirectory() as tmp:
             pdf_path = Path(tmp) / "comic.pdf"
             cbz_path = Path(tmp) / "comic.cbz"
-            pdf_path.write_bytes(pdf)
+            pdf_path.write_bytes(_two_page_pdf_with_late_cover(jpeg, page2))
 
             counts = convert_pdf_to_cbz(pdf_path, cbz_path)
 
-            self.assertEqual({"jpg": 1, "png": 0, "total": 1}, counts)
+            self.assertEqual({"jpg": 2, "png": 0, "total": 2}, counts)
             with ZipFile(cbz_path) as archive:
-                self.assertEqual(["0001.jpg"], archive.namelist())
+                self.assertEqual(["0001.jpg", "0002.jpg"], archive.namelist())
                 self.assertEqual(jpeg, archive.read("0001.jpg"))
                 self.assertEqual(ZIP_STORED, archive.getinfo("0001.jpg").compress_type)
 
@@ -129,6 +122,15 @@ class PdfToCbzLosslessTests(unittest.TestCase):
                 self.assertEqual(["0001.jpg", "0002.jpg"], archive.namelist())
                 self.assertEqual(cover, archive.read("0001.jpg"))
                 self.assertEqual(page2, archive.read("0002.jpg"))
+
+    def test_page_order_extraction_requires_pymupdf(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            pdf_path = Path(tmp) / "comic.pdf"
+            pdf_path.write_bytes(_two_page_pdf_with_late_cover())
+
+            with patch("pdf_to_cbz_lossless._load_fitz", return_value=None):
+                with self.assertRaisesRegex(PdfImageError, "PyMuPDF is required"):
+                    images_in_pdf_page_order(pdf_path)
 
     def test_flate_indexed_png_predictor_image_is_wrapped_as_png(self):
         rows = [bytes([0x12]), bytes([0x34])]

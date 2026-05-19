@@ -1,10 +1,13 @@
+import io
 import tempfile
 import unittest
 from pathlib import Path
 from zipfile import ZIP_STORED, ZipFile
+from contextlib import redirect_stderr
+from unittest.mock import patch
 
 from pdf_to_cbz_lossless import PdfImageError
-from pdf_to_epub_lossless import _validate_epub_structure, convert_pdf_to_epub
+from pdf_to_epub_lossless import _validate_epub_structure, convert_pdf_to_epub, main
 from test_pdf_to_cbz_lossless import _two_page_pdf_with_late_cover
 
 
@@ -117,6 +120,21 @@ class PdfToEpubLosslessTests(unittest.TestCase):
                 self.assertIn('<meta property="rendition:spread">auto</meta>', opf)
                 self.assertIn('<itemref idref="page-0001" properties="rendition:page-spread-right"/>', opf)
                 self.assertIn('<itemref idref="page-0002" properties="rendition:page-spread-left"/>', opf)
+
+    def test_cli_rejects_conflicting_spread_modes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            pdf_path = Path(tmp) / "comic.pdf"
+            pdf_path.write_bytes(_two_page_pdf_with_late_cover())
+            stderr = io.StringIO()
+
+            with patch("sys.argv", ["pdf_to_epub_lossless.py", str(pdf_path), "--apple-books", "--pair-first-two-pages"]):
+                with redirect_stderr(stderr):
+                    with self.assertRaisesRegex(SystemExit, "2"):
+                        main()
+
+        written = stderr.getvalue()
+        self.assertIn("--apple-books", written)
+        self.assertIn("--pair-first-two-pages", written)
 
     def test_epub_writes_author_language_and_selected_cover(self):
         with tempfile.TemporaryDirectory() as tmp:

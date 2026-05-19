@@ -477,7 +477,7 @@ def _png_row_length(width: int, bit_depth: int, color_type: int) -> int:
 def images_in_pdf_page_order(pdf_path: Path) -> list[ImageStream]:
     fitz = _load_fitz()
     if fitz is None:
-        return iter_image_streams(pdf_path)
+        raise PdfImageError("PyMuPDF is required for PDF page-order image extraction. Install PyMuPDF and try again.")
 
     doc = fitz.open(pdf_path)
     images: list[ImageStream] = []
@@ -489,7 +489,7 @@ def images_in_pdf_page_order(pdf_path: Path) -> list[ImageStream]:
             if image is not None:
                 images.append(image)
 
-    return images or iter_image_streams(pdf_path)
+    return images
 
 
 def _load_fitz():
