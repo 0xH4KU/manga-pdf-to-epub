@@ -36,7 +36,13 @@ class _FakeListbox:
         self.moved_to = None
 
     def curselection(self):
-        return () if self.selection is None else (self.selection,)
+        if self.selection is None:
+            return ()
+        if isinstance(self.selection, tuple):
+            return self.selection
+        if isinstance(self.selection, list):
+            return tuple(self.selection)
+        return (self.selection,)
 
     def delete(self, *_args):
         self.items.clear()
@@ -502,6 +508,76 @@ class EpubLayoutGuiListTests(unittest.TestCase):
         self.assertIn("Series volumes", labels)
         self.assertIsNot(app.series_list, app.page_list)
 
+    def test_left_navigation_places_series_volumes_beside_spine_order(self):
+        app = EpubLayoutApp.__new__(EpubLayoutApp)
+        app.root = _FakeRoot()
+        app.apple_preview = _FakeBool(True)
+        app.title_var = SimpleNamespace()
+        app.author_var = SimpleNamespace()
+        app.language_var = SimpleNamespace()
+        app.exclude_cover_var = _FakeBool(False)
+        app.inspector_tabs = {}
+        app.inspector_tab_buttons = {}
+        app.status = _FakeStatus()
+        app.workspace_status = _FakeStatus()
+        app.refresh_preview = lambda: None
+        app.refresh_workspace_status = lambda: None
+
+        class FakeFrame(_FakeWidget):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                self.parent = args[0] if args else None
+                self.options = kwargs
+
+        class FakePanedwindow(FakeFrame):
+            pass
+
+        class FakeButton(FakeFrame):
+            pass
+
+        class FakeLabel(FakeFrame):
+            pass
+
+        class FakeCheckbutton(FakeFrame):
+            pass
+
+        class FakeListbox(FakeFrame):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                self.options = kwargs
+
+            def bind(self, *_args, **_kwargs):
+                pass
+
+            def yview(self, *_args, **_kwargs):
+                pass
+
+        class FakeCanvas(FakeListbox):
+            def create_window(self, *_args, **_kwargs):
+                return 1
+
+            def itemconfigure(self, *_args, **_kwargs):
+                pass
+
+            def bbox(self, *_args, **_kwargs):
+                return (0, 0, 1, 1)
+
+        with patch("epub_layout_gui.ttk.Frame", FakeFrame), \
+            patch("epub_layout_gui.ttk.Panedwindow", FakePanedwindow), \
+            patch("epub_layout_gui.ttk.Button", FakeButton), \
+            patch("epub_layout_gui.ttk.Label", FakeLabel), \
+            patch("epub_layout_gui.ttk.Checkbutton", FakeCheckbutton), \
+            patch("epub_layout_gui.ttk.Scrollbar", FakeButton), \
+            patch("epub_layout_gui.ttk.Separator", FakeButton), \
+            patch("epub_layout_gui.ttk.Entry", FakeButton), \
+            patch("epub_layout_gui.tk.Listbox", FakeListbox), \
+            patch("epub_layout_gui.tk.Canvas", FakeCanvas):
+            app._build_ui()
+
+        self.assertEqual(app.series_list.parent.parent, app.page_list.parent.parent)
+        self.assertIsNot(app.series_list.parent, app.page_list.parent)
+        self.assertEqual("extended", app.series_list.options.get("selectmode"))
+
     def test_import_series_creates_project_and_populates_volume_list(self):
         app = EpubLayoutApp.__new__(EpubLayoutApp)
         app.series_list = _FakeListbox(selection=0)
@@ -580,6 +656,30 @@ class EpubLayoutGuiListTests(unittest.TestCase):
         self.assertTrue(app.series_refreshed)
         self.assertTrue(app.workspace_refreshed)
         self.assertEqual("Marked Vol.01 ready.", app.status.value)
+
+    def test_mark_selected_series_volume_ready_updates_all_selected_volumes(self):
+        app = EpubLayoutApp.__new__(EpubLayoutApp)
+        volumes = [
+            SimpleNamespace(status="Edited", volume_number=1, pdf_path=Path("/tmp/vol01.pdf")),
+            SimpleNamespace(status="Edited", volume_number=2, pdf_path=Path("/tmp/vol02.pdf")),
+            SimpleNamespace(status="Unreviewed", volume_number=7, pdf_path=Path("/tmp/vol07.pdf")),
+        ]
+        project = SimpleNamespace(
+            volumes=volumes,
+            mark_ready=lambda selected: setattr(selected, "status", "Ready"),
+        )
+        app.series_project = project
+        app.series_list = _FakeListbox(selection=(0, 1, 2))
+        app.status = _FakeStatus()
+        app.refresh_series_list = lambda: setattr(app, "series_refreshed", True)
+        app.refresh_workspace_status = lambda: setattr(app, "workspace_refreshed", True)
+
+        app.mark_selected_series_volume_ready()
+
+        self.assertEqual(["Ready", "Ready", "Ready"], [volume.status for volume in volumes])
+        self.assertTrue(app.series_refreshed)
+        self.assertTrue(app.workspace_refreshed)
+        self.assertEqual("Marked 3 volumes ready.", app.status.value)
 
     def test_export_ready_series_uses_series_project(self):
         app = EpubLayoutApp.__new__(EpubLayoutApp)

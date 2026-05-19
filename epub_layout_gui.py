@@ -132,13 +132,24 @@ class EpubLayoutApp:
 
         left = ttk.Frame(main, padding=8)
         main.add(left, weight=1)
-        ttk.Label(left, text="Series volumes").pack(anchor=tk.W)
-        self.series_list = tk.Listbox(left, exportselection=False, height=8)
-        self.series_list.pack(fill=tk.X, pady=(6, 12))
+        navigation = ttk.Panedwindow(left, orient=tk.HORIZONTAL)
+        navigation.pack(fill=tk.BOTH, expand=True)
+        series_pane = ttk.Frame(navigation, padding=(0, 0, 6, 0))
+        navigation.add(series_pane, weight=1)
+        ttk.Label(series_pane, text="Series volumes").pack(anchor=tk.W)
+        self.series_list = tk.Listbox(
+            series_pane,
+            exportselection=False,
+            activestyle="dotbox",
+            selectmode=tk.EXTENDED,
+            width=28,
+        )
+        self.series_list.pack(fill=tk.BOTH, expand=True, pady=(6, 12))
         self.series_list.bind("<<ListboxSelect>>", lambda _event: self.select_series_volume())
-        ttk.Separator(left).pack(fill=tk.X, pady=(0, 12))
-        ttk.Label(left, text="Spine order").pack(anchor=tk.W)
-        self.page_list = tk.Listbox(left, exportselection=False, activestyle="dotbox", selectmode=tk.EXTENDED)
+        spine_pane = ttk.Frame(navigation, padding=(6, 0, 0, 0))
+        navigation.add(spine_pane, weight=1)
+        ttk.Label(spine_pane, text="Spine order").pack(anchor=tk.W)
+        self.page_list = tk.Listbox(spine_pane, exportselection=False, activestyle="dotbox", selectmode=tk.EXTENDED)
         self.page_list.pack(fill=tk.BOTH, expand=True, pady=(6, 12))
         self.page_list.bind("<<ListboxSelect>>", lambda _event: self.refresh_preview())
         self.page_list.bind("<ButtonPress-1>", self._page_drag_start)
@@ -426,11 +437,15 @@ class EpubLayoutApp:
         selection = self.series_list.curselection()
         if not selection:
             return
-        volume = self.series_project.volumes[selection[0]]
-        self.series_project.mark_ready(volume)
+        selected_volumes = [self.series_project.volumes[index] for index in selection]
+        for volume in selected_volumes:
+            self.series_project.mark_ready(volume)
         self.refresh_series_list()
         self.refresh_workspace_status()
-        self.status.set(f"Marked Vol.{volume.volume_number:02d} ready.")
+        if len(selected_volumes) == 1:
+            self.status.set(f"Marked Vol.{selected_volumes[0].volume_number:02d} ready.")
+        else:
+            self.status.set(f"Marked {len(selected_volumes)} volumes ready.")
 
     def export_ready_series(self) -> None:
         if self.series_project is None:
