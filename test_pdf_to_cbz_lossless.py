@@ -183,6 +183,43 @@ class PdfToCbzLosslessTests(unittest.TestCase):
 
         self.assertEqual(payload, chunks[b"IDAT"])
 
+    def test_flate_indexed_image_accepts_indirect_palette_object_from_page_order_extraction(self):
+        rows = [bytes([0x12]), bytes([0x34])]
+        payload = _png_predict_none(rows)
+        palette = b"\x00\x00\x00\x55\x55\x55\xaa\xaa\xaa\xff\xff\xff"
+        pdf = _pdf_from_objects(
+            [
+                (1, b"<< /Type /Catalog /Pages 2 0 R >>"),
+                (2, b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+                (
+                    3,
+                    b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 2 2] "
+                    b"/Resources << /XObject << /Im0 5 0 R >> >> /Contents 4 0 R >>",
+                ),
+                (4, _stream_object(b"<< /Length __LEN__ >>", b"q 2 0 0 2 0 0 cm /Im0 Do Q")),
+                (
+                    5,
+                    _stream_object(
+                        b"<< /Type /XObject /Subtype /Image /Width 2 /Height 2 "
+                        b"/BitsPerComponent 4 /ColorSpace [/Indexed /DeviceRGB 3 6 0 R] "
+                        b"/DecodeParms << /Predictor 15 /Colors 1 /Columns 2 /BitsPerComponent 4 >> "
+                        b"/Filter /FlateDecode /Length __LEN__ >>",
+                        payload,
+                    ),
+                ),
+                (6, _stream_object(b"<< /Length __LEN__ >>", palette)),
+            ]
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            pdf_path = Path(tmp) / "comic.pdf"
+            pdf_path.write_bytes(pdf)
+
+            image = images_in_pdf_page_order(pdf_path)[0]
+            png = flate_image_to_png(image)
+
+        self.assertEqual(b"[/Indexed /DeviceRGB 3 <000000555555aaaaaaffffff>]", image.color_space)
+        self.assertEqual(palette, _png_chunks(png)[b"PLTE"])
+
 
 def _png_chunks(data):
     chunks = {}

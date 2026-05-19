@@ -543,7 +543,7 @@ def _image_from_xref(doc, xref: int, index: int) -> ImageStream | None:
             width=_xref_required_int(doc, xref, "Width"),
             height=_xref_required_int(doc, xref, "Height"),
             bits_per_component=_xref_required_int(doc, xref, "BitsPerComponent"),
-            color_space=_normalize_pdf_object(_xref_object(doc, xref, "ColorSpace")),
+            color_space=_normalize_xref_color_space(doc, _xref_object(doc, xref, "ColorSpace")),
             filter_name=filter_name,
             decode_parms=_normalize_pdf_object(_xref_object(doc, xref, "DecodeParms")),
             data=payload,
@@ -571,6 +571,25 @@ def _normalize_pdf_object(obj: bytes | None) -> bytes | None:
     if obj is None:
         return None
     return obj.strip()
+
+
+def _normalize_xref_color_space(doc, color_space: bytes | None) -> bytes | None:
+    color_space = _normalize_pdf_object(color_space)
+    if color_space is None:
+        return None
+    match = re.match(rb"\[\s*/Indexed\s*/DeviceRGB\s+(\d+)\s+(\d+)\s+(\d+)\s+R\s*\]", color_space)
+    if not match:
+        return color_space
+    highest_index = int(match.group(1))
+    palette_xref = int(match.group(2))
+    generation = int(match.group(3))
+    if generation != 0:
+        return color_space
+    expected = (highest_index + 1) * 3
+    palette = doc.xref_stream(palette_xref)
+    if not palette or len(palette) < expected:
+        return color_space
+    return b"[/Indexed /DeviceRGB " + str(highest_index).encode("ascii") + b" <" + palette[:expected].hex().encode("ascii") + b">]"
 
 
 def convert_pdf_to_cbz(pdf_path: Path, cbz_path: Path, overwrite: bool = False) -> dict[str, int]:
