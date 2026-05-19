@@ -809,16 +809,15 @@ class EpubLayoutGuiListTests(unittest.TestCase):
 
         self.assertEqual("Batch validation complete: 1 ready, 1 warning, 1 failed.", app.status.value)
 
-    def test_normalize_export_order_reports_entry_count(self):
-        app = EpubLayoutApp.__new__(EpubLayoutApp)
-        app.model = SimpleNamespace(entries=[_entry("Page 1"), _entry("Blank 1", is_blank=True), _entry("Page 2")])
-        app.status = _FakeStatus()
-        app.refresh_list = lambda preserve_yview=False: setattr(app, "preserved_yview", preserve_yview)
-        app.refresh_preview = lambda: setattr(app, "preview_refreshed", True)
-
-        app.normalize_export_order()
-
-        self.assertEqual("Export will normalize 3 entries automatically.", app.status.value)
+    def test_hidden_legacy_gui_actions_are_removed(self):
+        removed_method_names = (
+            "normalize" + "_export_order",
+            "batch" + "_apply_preset",
+            "_batch" + "_apply_work",
+            "_batch_done",
+        )
+        for method_name in removed_method_names:
+            self.assertFalse(hasattr(EpubLayoutApp, method_name), method_name)
 
     def test_quick_delete_status_reports_deleted_mix(self):
         app = EpubLayoutApp.__new__(EpubLayoutApp)

@@ -750,13 +750,6 @@ class EpubLayoutApp:
             f"{counts['Ready']} ready, {counts['Warning']} warning, {counts['Failed']} failed."
         )
 
-    def normalize_export_order(self) -> None:
-        if self.model is None:
-            return
-        self.refresh_list(preserve_yview=True)
-        self.refresh_preview()
-        self.status.set(f"Export will normalize {len(self.model.entries)} entries automatically.")
-
     def _delete_group(self, delete_action, status_message: str) -> None:
         if self.model is None:
             return
@@ -848,47 +841,6 @@ class EpubLayoutApp:
             self.status.set(f"Loaded preset: {Path(filename).name}")
         except Exception as exc:
             messagebox.showerror("Load preset failed", str(exc))
-
-    def batch_apply_preset(self) -> None:
-        preset_name = filedialog.askopenfilename(
-            title="Preset to Apply",
-            filetypes=[("JSON files", "*.json"), ("All files", "*.*")],
-            initialdir=str(Path.cwd()),
-        )
-        if not preset_name:
-            return
-        pdf_names = filedialog.askopenfilenames(
-            title="PDF files to export",
-            filetypes=[("PDF files", "*.pdf"), ("All files", "*.*")],
-            initialdir=str(Path.cwd()),
-        )
-        if not pdf_names:
-            return
-        output_dir_name = filedialog.askdirectory(title="Output directory", initialdir=str(Path.cwd()))
-        if not output_dir_name:
-            return
-        preset_path = Path(preset_name)
-        output_dir = Path(output_dir_name)
-        self._run_background(
-            "Batch exporting...",
-            lambda: self._batch_apply_work(pdf_names, preset_path, output_dir),
-            lambda exported: self._batch_done(len(exported), output_dir),
-        )
-
-    def _batch_apply_work(self, pdf_names, preset_path: Path, output_dir: Path) -> list[str]:
-        exported = []
-        for pdf_name in pdf_names:
-            pdf_path = Path(pdf_name)
-            model = LayoutModel.from_pdf(pdf_path)
-            model.apply_preset(preset_path)
-            epub_path = output_dir / pdf_path.with_suffix(".epub").name
-            model.export_epub(epub_path, overwrite=True)
-            exported.append(epub_path.name)
-        return exported
-
-    def _batch_done(self, count: int, output_dir: Path) -> None:
-        self.status.set(f"Batch exported {count} EPUB files.")
-        messagebox.showinfo("Batch complete", f"Exported {count} EPUB files to:\n{output_dir}")
 
     def _load_metadata_fields(self) -> None:
         if self.model is None:
