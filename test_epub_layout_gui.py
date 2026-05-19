@@ -606,6 +606,30 @@ class EpubLayoutGuiListTests(unittest.TestCase):
         self.assertIsNot(app.series_list.parent, app.page_list.parent)
         self.assertEqual("extended", app.series_list.options.get("selectmode"))
 
+    def test_series_navigation_stacks_when_default_width_is_too_narrow(self):
+        app = EpubLayoutApp.__new__(EpubLayoutApp)
+        app.series_project = SimpleNamespace(volumes=[])
+        app.series_pane = _FakeWidget()
+        app.spine_pane = _FakeWidget()
+
+        app._sync_navigation_mode(available_width=520)
+
+        self.assertTrue(app.series_pane.packed)
+        self.assertTrue(app.spine_pane.packed)
+        self.assertEqual("top", app.series_pane.pack_args[-1][1]["side"])
+        self.assertEqual("top", app.spine_pane.pack_args[-1][1]["side"])
+
+    def test_series_navigation_uses_columns_when_width_allows(self):
+        app = EpubLayoutApp.__new__(EpubLayoutApp)
+        app.series_project = SimpleNamespace(volumes=[])
+        app.series_pane = _FakeWidget()
+        app.spine_pane = _FakeWidget()
+
+        app._sync_navigation_mode(available_width=760)
+
+        self.assertEqual("left", app.series_pane.pack_args[-1][1]["side"])
+        self.assertEqual("left", app.spine_pane.pack_args[-1][1]["side"])
+
     def test_import_series_reveals_series_navigation(self):
         app = EpubLayoutApp.__new__(EpubLayoutApp)
         app.series_pane = _FakeWidget()

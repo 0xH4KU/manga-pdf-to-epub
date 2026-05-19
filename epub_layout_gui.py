@@ -134,6 +134,7 @@ class EpubLayoutApp:
         main.add(left, weight=1)
         navigation = ttk.Frame(left)
         navigation.pack(fill=tk.BOTH, expand=True)
+        navigation.bind("<Configure>", lambda event: self._sync_navigation_mode(available_width=event.width))
         self.series_pane = ttk.Frame(navigation, padding=(0, 0, 6, 0))
         self.series_pane.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         ttk.Label(self.series_pane, text="Series volumes").pack(anchor=tk.W)
@@ -513,16 +514,26 @@ class EpubLayoutApp:
             self.page_list.yview_moveto(yview_start)
         self.refresh_workspace_status()
 
-    def _sync_navigation_mode(self) -> None:
+    def _sync_navigation_mode(self, available_width: int | None = None) -> None:
         if not hasattr(self, "series_pane") or not hasattr(self, "spine_pane"):
             return
         series_mode = getattr(self, "series_project", None) is not None
         if series_mode:
-            self._pack_navigation_pane(self.series_pane, side=tk.LEFT, fill=tk.BOTH, expand=True)
-            self._pack_navigation_pane(self.spine_pane, side=tk.LEFT, fill=tk.BOTH, expand=True)
+            if self._navigation_uses_columns(available_width):
+                self._pack_navigation_pane(self.series_pane, side=tk.LEFT, fill=tk.BOTH, expand=True)
+                self._pack_navigation_pane(self.spine_pane, side=tk.LEFT, fill=tk.BOTH, expand=True)
+            else:
+                self._pack_navigation_pane(self.series_pane, side=tk.TOP, fill=tk.BOTH, expand=True)
+                self._pack_navigation_pane(self.spine_pane, side=tk.TOP, fill=tk.BOTH, expand=True)
         else:
             self.series_pane.pack_forget()
             self._pack_navigation_pane(self.spine_pane, side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+    @staticmethod
+    def _navigation_uses_columns(available_width: int | None) -> bool:
+        if available_width is None:
+            return False
+        return available_width >= 680
 
     @staticmethod
     def _pack_navigation_pane(pane, **kwargs) -> None:
