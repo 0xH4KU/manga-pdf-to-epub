@@ -580,6 +580,46 @@ class EpubLayoutGuiListTests(unittest.TestCase):
         self.assertTrue(app.preview_refreshed)
         self.assertEqual("Loaded Series Vol.01.", app.status.value)
 
+    def test_mark_selected_series_volume_ready_updates_series_list(self):
+        app = EpubLayoutApp.__new__(EpubLayoutApp)
+        volume = SimpleNamespace(status="Edited", volume_number=1, pdf_path=Path("/tmp/vol01.pdf"))
+        project = SimpleNamespace(
+            volumes=[volume],
+            mark_ready=lambda selected: setattr(selected, "status", "Ready"),
+        )
+        app.series_project = project
+        app.series_list = _FakeListbox(selection=0)
+        app.status = _FakeStatus()
+        app.refresh_series_list = lambda: setattr(app, "series_refreshed", True)
+        app.refresh_workspace_status = lambda: setattr(app, "workspace_refreshed", True)
+
+        app.mark_selected_series_volume_ready()
+
+        self.assertEqual("Ready", volume.status)
+        self.assertTrue(app.series_refreshed)
+        self.assertTrue(app.workspace_refreshed)
+        self.assertEqual("Marked Vol.01 ready.", app.status.value)
+
+    def test_export_ready_series_uses_series_project(self):
+        app = EpubLayoutApp.__new__(EpubLayoutApp)
+        app.status = _FakeStatus()
+        app.refresh_series_list = lambda: setattr(app, "series_refreshed", True)
+        app.refresh_workspace_status = lambda: setattr(app, "workspace_refreshed", True)
+        project = SimpleNamespace(
+            exported_to=None,
+            export_ready=lambda output_dir: setattr(project, "exported_to", output_dir)
+            or {"exported": 1, "failed": 0, "skipped": 2},
+        )
+        app.series_project = project
+
+        with patch("epub_layout_gui.filedialog.askdirectory", return_value="/tmp/out"):
+            app.export_ready_series()
+
+        self.assertEqual(Path("/tmp/out"), project.exported_to)
+        self.assertTrue(app.series_refreshed)
+        self.assertTrue(app.workspace_refreshed)
+        self.assertEqual("Series exported 1 volumes; 0 failed, 2 skipped.", app.status.value)
+
     def test_bind_shortcuts_registers_safe_layout_actions(self):
         app = EpubLayoutApp.__new__(EpubLayoutApp)
         app.root = _FakeRoot()

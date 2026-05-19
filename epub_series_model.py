@@ -52,6 +52,31 @@ class SeriesProject:
         volume.layout_model.language = self.language
         return volume.layout_model
 
+    def mark_ready(self, volume: SeriesVolume) -> None:
+        volume.status = "Ready"
+        volume.error = None
+
+    def export_ready(self, output_dir: Path) -> dict[str, int]:
+        output_dir = Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        summary = {"exported": 0, "failed": 0, "skipped": 0}
+        for volume in self.volumes:
+            if volume.status != "Ready":
+                summary["skipped"] += 1
+                continue
+            try:
+                model = self.model_for_volume(volume)
+                volume.output_path = output_dir / f"{_safe_filename(self.generated_title(volume))}.epub"
+                model.export_epub(volume.output_path, overwrite=True)
+                volume.status = "Exported"
+                volume.error = None
+                summary["exported"] += 1
+            except Exception as exc:
+                volume.status = "Failed"
+                volume.error = str(exc)
+                summary["failed"] += 1
+        return summary
+
 
 def _natural_path_key(path: Path) -> list[int | str]:
     parts: list[int | str] = []
@@ -80,3 +105,9 @@ def _fallback_series_title(paths: list[Path]) -> str:
     stem = re.sub(r"\b(?:vol(?:ume)?\.?\s*)\d+\b", "", stem, flags=re.IGNORECASE)
     stem = re.sub(r"\s+", " ", stem).strip()
     return stem or paths[0].stem
+
+
+def _safe_filename(title: str) -> str:
+    cleaned = re.sub(r'[\\/:*?"<>|]+', "_", title)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    return cleaned or "Untitled"

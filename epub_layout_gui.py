@@ -116,6 +116,7 @@ class EpubLayoutApp:
         ttk.Button(toolbar, text="Import Series...", command=self.import_series).pack(side=tk.LEFT)
         ttk.Button(toolbar, text="Open PDF", command=self.open_pdf).pack(side=tk.LEFT)
         ttk.Button(toolbar, text="Export EPUB", command=self.export_epub).pack(side=tk.LEFT, padx=(8, 0))
+        ttk.Button(toolbar, text="Export Ready Series...", command=self.export_ready_series).pack(side=tk.LEFT, padx=(8, 0))
         ttk.Button(toolbar, text="Save Preset", command=self.save_preset).pack(side=tk.LEFT, padx=(8, 0))
         ttk.Button(toolbar, text="Load Preset", command=self.load_preset).pack(side=tk.LEFT, padx=(8, 0))
         ttk.Button(toolbar, text="Command Palette...", command=self.open_command_palette).pack(side=tk.RIGHT)
@@ -256,6 +257,9 @@ class EpubLayoutApp:
         self._add_panel_button(parent, "Validate Batch...", self.validate_batch)
         self._add_section_gap(parent)
         self._add_section_label(parent, "Export")
+        self._add_panel_button(parent, "Mark Selected Volume Ready", self.mark_selected_series_volume_ready)
+        self._add_panel_button(parent, "Export Ready Series...", self.export_ready_series)
+        self._add_section_gap(parent)
         self._add_panel_button(parent, "Export Ready...", self.export_ready_batch)
         self._add_panel_button(parent, "Export All...", self.export_all_batch)
 
@@ -273,6 +277,8 @@ class EpubLayoutApp:
             AppCommand("Open PDF", "open_pdf", keywords=("import", "load")),
             AppCommand("Import Series", "import_series", keywords=("folder", "volumes")),
             AppCommand("Export EPUB", "export_epub", keywords=("save",)),
+            AppCommand("Mark Selected Volume Ready", "mark_selected_series_volume_ready", keywords=("series",)),
+            AppCommand("Export Ready Series", "export_ready_series", keywords=("series",)),
             AppCommand("Save Preset", "save_preset", keywords=("layout",)),
             AppCommand("Load Preset", "load_preset", keywords=("layout",)),
             AppCommand("Insert Blank Before", "insert_blank", (True,), ("page",)),
@@ -421,6 +427,36 @@ class EpubLayoutApp:
             volume.error = str(exc)
             self.refresh_series_list()
             messagebox.showerror("Load series volume failed", str(exc))
+
+    def mark_selected_series_volume_ready(self) -> None:
+        if self.series_project is None or not hasattr(self, "series_list"):
+            return
+        selection = self.series_list.curselection()
+        if not selection:
+            return
+        volume = self.series_project.volumes[selection[0]]
+        self.series_project.mark_ready(volume)
+        self.refresh_series_list()
+        self.refresh_workspace_status()
+        self.status.set(f"Marked Vol.{volume.volume_number:02d} ready.")
+
+    def export_ready_series(self) -> None:
+        if self.series_project is None:
+            return
+        output_dir_name = filedialog.askdirectory(
+            title="Series output directory",
+            initialdir=str(getattr(self, "output_dir", Path.cwd())),
+        )
+        if not output_dir_name:
+            return
+        output_dir = Path(output_dir_name)
+        summary = self.series_project.export_ready(output_dir)
+        self.refresh_series_list()
+        self.refresh_workspace_status()
+        self.status.set(
+            f"Series exported {summary['exported']} volumes; "
+            f"{summary['failed']} failed, {summary['skipped']} skipped."
+        )
 
     def _load_series_volume(self, volume: SeriesVolume) -> None:
         self.pdf_path = volume.pdf_path

@@ -1,6 +1,7 @@
 import tempfile
 import unittest
 from pathlib import Path
+from zipfile import ZipFile
 
 from epub_series_model import SeriesProject
 from test_pdf_to_cbz_lossless import _two_page_pdf_with_late_cover
@@ -56,6 +57,46 @@ class EpubSeriesModelTests(unittest.TestCase):
             self.assertEqual("晚安,布布 Vol.01", model.title)
             self.assertEqual("淺野一二O", model.author)
             self.assertEqual("ja", model.language)
+
+    def test_export_ready_exports_only_ready_volumes_with_series_metadata(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ready_pdf = Path(tmp) / "晚安,布布 淺野一二O Vol.01.pdf"
+            edited_pdf = Path(tmp) / "晚安,布布 淺野一二O Vol.02.pdf"
+            unreviewed_pdf = Path(tmp) / "晚安,布布 淺野一二O Vol.03.pdf"
+            output_dir = Path(tmp) / "out"
+            for path in (ready_pdf, edited_pdf, unreviewed_pdf):
+                path.write_bytes(_two_page_pdf_with_late_cover())
+            project = SeriesProject.from_pdfs(
+                [unreviewed_pdf, ready_pdf, edited_pdf],
+                title="晚安,布布",
+                author="淺野一二O",
+                language="ja",
+            )
+            project.volumes[0].status = "Ready"
+            project.volumes[1].status = "Edited"
+
+            summary = project.export_ready(output_dir)
+
+            self.assertEqual({"exported": 1, "failed": 0, "skipped": 2}, summary)
+            self.assertEqual(["Exported", "Edited", "Unreviewed"], [volume.status for volume in project.volumes])
+            exported_path = output_dir / "晚安,布布 Vol.01.epub"
+            self.assertTrue(exported_path.exists())
+            self.assertFalse((output_dir / "晚安,布布 Vol.02.epub").exists())
+            with ZipFile(exported_path) as archive:
+                opf = archive.read("EPUB/content.opf").decode("utf-8")
+                self.assertIn("<dc:title>晚安,布布 Vol.01</dc:title>", opf)
+                self.assertIn("<dc:creator>淺野一二O</dc:creator>", opf)
+                self.assertIn("<dc:language>ja</dc:language>", opf)
+
+    def test_mark_volume_ready_updates_status(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            pdf_path = Path(tmp) / "Series Vol.01.pdf"
+            pdf_path.write_bytes(_two_page_pdf_with_late_cover())
+            project = SeriesProject.from_pdfs([pdf_path], title="Series")
+
+            project.mark_ready(project.volumes[0])
+
+            self.assertEqual("Ready", project.volumes[0].status)
 
 
 if __name__ == "__main__":
