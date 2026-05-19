@@ -44,6 +44,7 @@ class EpubLayoutApp:
         self.batch_project: BatchProject | None = None
         self.batch_output_dir: Path | None = None
         self._busy = False
+        self._page_drag_source: int | None = None
 
         self._build_ui()
         self._bind_shortcuts()
@@ -120,6 +121,8 @@ class EpubLayoutApp:
         self.page_list = tk.Listbox(left, exportselection=False, activestyle="dotbox", selectmode=tk.EXTENDED)
         self.page_list.pack(fill=tk.BOTH, expand=True, pady=(6, 12))
         self.page_list.bind("<<ListboxSelect>>", lambda _event: self.refresh_preview())
+        self.page_list.bind("<ButtonPress-1>", self._page_drag_start)
+        self.page_list.bind("<ButtonRelease-1>", self._page_drag_release)
         ttk.Label(left, text="Batch queue").pack(anchor=tk.W)
         self.batch_list = tk.Listbox(left, exportselection=False, height=7)
         self.batch_list.pack(fill=tk.X, pady=(6, 0))
@@ -412,6 +415,38 @@ class EpubLayoutApp:
 
     def selected_indexes(self) -> list[int]:
         return list(self.page_list.curselection())
+
+    def _page_drag_start(self, event) -> None:
+        if self.model is None or not self.model.entries:
+            self._page_drag_source = None
+            return
+        index = self.page_list.nearest(event.y)
+        if index < 0 or index >= len(self.model.entries):
+            self._page_drag_source = None
+            return
+        self._page_drag_source = index
+
+    def _page_drag_release(self, event) -> None:
+        if self.model is None or self._page_drag_source is None:
+            return
+        from_index = self._page_drag_source
+        self._page_drag_source = None
+        if not self.model.entries:
+            return
+        to_index = self.page_list.nearest(event.y)
+        to_index = min(max(to_index, 0), len(self.model.entries) - 1)
+        if from_index == to_index:
+            return
+        try:
+            label = self.model.entries[from_index].label
+            final_index = self.model.move_entry(from_index, to_index)
+            self.refresh_list(preserve_yview=True)
+            self.page_list.selection_clear(0, tk.END)
+            self.page_list.selection_set(final_index)
+            self.refresh_preview()
+            self.status.set(f"Moved {label} to position {final_index + 1}.")
+        except Exception as exc:
+            messagebox.showerror("Move page failed", str(exc))
 
     def insert_blank(self, before: bool) -> None:
         if self.model is None:

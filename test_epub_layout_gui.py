@@ -58,6 +58,11 @@ class _FakeListbox:
         self.moved_to = fraction
         self.current_yview = (fraction, fraction)
 
+    def nearest(self, y):
+        if not self.items:
+            return 0
+        return min(max(int(y), 0), len(self.items) - 1)
+
 
 class _FakeStatus:
     def __init__(self):
@@ -138,6 +143,11 @@ class _FakeDeleteModel:
 
     def export_selected_images(self, indexes, output_dir):
         return [output_dir / f"{index + 1:04d}.jpg" for index in indexes], 0
+
+    def move_entry(self, from_index, to_index):
+        entry = self.entries.pop(from_index)
+        self.entries.insert(to_index, entry)
+        return to_index
 
 
 class _FakeBatchProject:
@@ -536,6 +546,60 @@ class EpubLayoutGuiListTests(unittest.TestCase):
         app.page_list.curselection = lambda: (0, 2)
 
         self.assertEqual([0, 2], app.selected_indexes())
+
+    def test_drag_release_moves_pressed_row_to_target_row(self):
+        app = EpubLayoutApp.__new__(EpubLayoutApp)
+        app.model = _FakeDeleteModel([_entry("Page 1"), _entry("Page 2"), _entry("Page 3")])
+        app.page_list = _FakeListbox(selection=0)
+        app.page_list.items = ["Page 1", "Page 2", "Page 3"]
+        app.status = _FakeStatus()
+        app.workspace_status = _FakeStatus()
+        app.batch_project = None
+        app._page_drag_source = None
+        app.refresh_preview = lambda: setattr(app, "preview_refreshed", True)
+
+        app._page_drag_start(SimpleNamespace(y=0))
+        app._page_drag_release(SimpleNamespace(y=2))
+
+        self.assertEqual(["Page 2", "Page 3", "Page 1"], [entry.label for entry in app.model.entries])
+        self.assertEqual(2, app.page_list.selection)
+        self.assertTrue(app.preview_refreshed)
+        self.assertEqual("Moved Page 1 to position 3.", app.status.value)
+
+    def test_drag_release_on_same_row_does_not_move(self):
+        app = EpubLayoutApp.__new__(EpubLayoutApp)
+        app.model = _FakeDeleteModel([_entry("Page 1"), _entry("Page 2")])
+        app.page_list = _FakeListbox(selection=0)
+        app.page_list.items = ["Page 1", "Page 2"]
+        app.status = _FakeStatus()
+        app.workspace_status = _FakeStatus()
+        app.batch_project = None
+        app._page_drag_source = None
+        app.refresh_preview = lambda: setattr(app, "preview_refreshed", True)
+
+        app._page_drag_start(SimpleNamespace(y=1))
+        app._page_drag_release(SimpleNamespace(y=1))
+
+        self.assertEqual(["Page 1", "Page 2"], [entry.label for entry in app.model.entries])
+        self.assertFalse(hasattr(app, "preview_refreshed"))
+        self.assertIsNone(app.status.value)
+
+    def test_drag_uses_pressed_row_when_selection_differs(self):
+        app = EpubLayoutApp.__new__(EpubLayoutApp)
+        app.model = _FakeDeleteModel([_entry("Page 1"), _entry("Page 2"), _entry("Page 3")])
+        app.page_list = _FakeListbox(selection=0)
+        app.page_list.items = ["Page 1", "Page 2", "Page 3"]
+        app.status = _FakeStatus()
+        app.workspace_status = _FakeStatus()
+        app.batch_project = None
+        app._page_drag_source = None
+        app.refresh_preview = lambda: None
+
+        app._page_drag_start(SimpleNamespace(y=1))
+        app._page_drag_release(SimpleNamespace(y=2))
+
+        self.assertEqual(["Page 1", "Page 3", "Page 2"], [entry.label for entry in app.model.entries])
+        self.assertEqual(2, app.page_list.selection)
 
     def test_insert_image_after_selected_page_calls_model(self):
         app = EpubLayoutApp.__new__(EpubLayoutApp)

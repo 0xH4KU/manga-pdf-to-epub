@@ -323,6 +323,63 @@ class EpubLayoutModelTests(unittest.TestCase):
 
             self.assertEqual(1, model.cover_source_index)
 
+    def test_move_entry_reorders_source_pages(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            pdf_path = Path(tmp) / "comic.pdf"
+            pdf_path.write_bytes(_four_page_pdf())
+            model = LayoutModel.from_pdf(pdf_path)
+
+            final_index = model.move_entry(3, 1)
+
+            self.assertEqual(1, final_index)
+            self.assertEqual(["Page 1", "Page 4", "Page 2", "Page 3"], [entry.label for entry in model.entries])
+
+    def test_move_entry_down_uses_final_visible_index(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            pdf_path = Path(tmp) / "comic.pdf"
+            pdf_path.write_bytes(_four_page_pdf())
+            model = LayoutModel.from_pdf(pdf_path)
+
+            final_index = model.move_entry(1, 3)
+
+            self.assertEqual(3, final_index)
+            self.assertEqual(["Page 1", "Page 3", "Page 4", "Page 2"], [entry.label for entry in model.entries])
+
+    def test_move_entry_allows_blank_pages(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            pdf_path = Path(tmp) / "comic.pdf"
+            pdf_path.write_bytes(_two_page_pdf_with_late_cover())
+            model = LayoutModel.from_pdf(pdf_path)
+            model.insert_blank(1)
+
+            final_index = model.move_entry(1, 2)
+
+            self.assertEqual(2, final_index)
+            self.assertEqual(["Page 1", "Page 2", "Blank 1"], [entry.label for entry in model.entries])
+
+    def test_move_cover_entry_keeps_cover_identity(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            pdf_path = Path(tmp) / "comic.pdf"
+            pdf_path.write_bytes(_four_page_pdf())
+            model = LayoutModel.from_pdf(pdf_path)
+            model.set_cover(3)
+
+            model.move_entry(2, 0)
+
+            self.assertEqual(3, model.cover_source_index)
+            self.assertEqual("page-0001", model.normalized_cover_item_id())
+
+    def test_move_entry_rejects_invalid_indexes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            pdf_path = Path(tmp) / "comic.pdf"
+            pdf_path.write_bytes(_two_page_pdf_with_late_cover())
+            model = LayoutModel.from_pdf(pdf_path)
+
+            with self.assertRaises(IndexError):
+                model.move_entry(-1, 0)
+            with self.assertRaises(IndexError):
+                model.move_entry(0, 2)
+
     def test_export_selected_images_skips_blanks_and_uses_spine_names(self):
         with tempfile.TemporaryDirectory() as tmp:
             pdf_path = Path(tmp) / "comic.pdf"

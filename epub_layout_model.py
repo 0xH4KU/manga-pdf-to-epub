@@ -115,6 +115,18 @@ class LayoutModel:
         del self.entries[index]
         self._ensure_valid_cover()
 
+    def move_entry(self, from_index: int, to_index: int) -> int:
+        if from_index < 0 or from_index >= len(self.entries):
+            raise IndexError("Move source index out of range")
+        if to_index < 0 or to_index >= len(self.entries):
+            raise IndexError("Move destination index out of range")
+        if from_index == to_index:
+            return from_index
+        entry = self.entries.pop(from_index)
+        self.entries.insert(to_index, entry)
+        self._ensure_valid_cover()
+        return to_index
+
     def delete_first(self, count: int) -> list[tuple[int, LayoutEntry]]:
         if count <= 0:
             raise ValueError("Delete count must be greater than zero")
