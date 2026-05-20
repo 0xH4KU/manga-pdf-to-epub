@@ -8,7 +8,7 @@ from pathlib import Path
 import fitz
 
 from pdf_to_cbz_lossless import ImageStream, PdfImageError, image_to_archive_member, images_in_pdf_page_order
-from pdf_to_epub_lossless import EpubPage, _media_type_for_ext, write_epub_from_pages
+from epub_writer import EpubPage, media_type_for_ext, write_epub_from_pages
 
 
 @dataclass(frozen=True)
@@ -94,7 +94,7 @@ class LayoutModel:
             width=width,
             height=height,
             image_href=f"images/{item_id}.{ext}",
-            image_media_type=_media_type_for_ext(ext),
+            image_media_type=media_type_for_ext(ext),
             image_data=data,
             xhtml_href=f"xhtml/{item_id}.xhtml",
             item_id=item_id,
@@ -381,27 +381,20 @@ class LayoutModel:
 
 
 def _entry_from_image(image: ImageStream, padding: int) -> LayoutEntry:
-    ext, payload = _image_payload(image)
+    ext, payload = image_to_archive_member(image)
     page_number = f"{image.index:0{padding}d}"
     page = EpubPage(
         index=image.index,
         width=image.width,
         height=image.height,
         image_href=f"images/page-{page_number}.{ext}",
-        image_media_type=_media_type_for_ext(ext),
+        image_media_type=media_type_for_ext(ext),
         image_data=payload,
         xhtml_href=f"xhtml/page-{page_number}.xhtml",
         item_id=f"page-{image.index:04d}",
         label=f"Page {image.index}",
     )
     return LayoutEntry(page.label, page, source_index=image.index)
-
-
-def _image_payload(image: ImageStream) -> tuple[str, bytes]:
-    if image.filter_name == "PNG":
-        return "png", image.data
-    return image_to_archive_member(image)
-
 
 def _reference_page(entries: list[LayoutEntry], index: int) -> EpubPage:
     for candidate in entries[max(0, index - 1) :: -1]:

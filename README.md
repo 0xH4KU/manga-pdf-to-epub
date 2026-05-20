@@ -158,7 +158,7 @@ For Flate-compressed PDF image streams, the tool wraps the image data into PNG. 
 ## Test
 
 ```bash
-.venv/bin/python -m py_compile epub_layout_gui.py epub_layout_model.py epub_batch_model.py epub_series_model.py pdf_to_epub_lossless.py pdf_to_cbz_lossless.py
+.venv/bin/python -m py_compile epub_layout_gui.py epub_layout_gui_support.py epub_layout_preview.py epub_layout_model.py epub_batch_model.py epub_series_model.py epub_writer.py epub_validation.py pdf_to_epub_lossless.py pdf_to_cbz_lossless.py
 .venv/bin/python -m unittest
 ```
 

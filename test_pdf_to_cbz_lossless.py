@@ -8,9 +8,11 @@ from zipfile import ZIP_STORED, ZipFile
 from unittest.mock import patch
 
 from pdf_to_cbz_lossless import (
+    ImageStream,
     PdfImageError,
     _image_from_xref,
     convert_pdf_to_cbz,
+    image_to_archive_member,
     flate_image_to_png,
     images_in_pdf_page_order,
     iter_image_streams,
@@ -167,6 +169,20 @@ class PdfToCbzLosslessTests(unittest.TestCase):
         self.assertEqual(2, image.width)
         self.assertEqual(3, image.height)
         self.assertEqual(b"PNG-DATA", image.data)
+
+    def test_already_extracted_png_stream_is_archive_ready_without_rewrapping(self):
+        image = ImageStream(
+            index=1,
+            width=2,
+            height=3,
+            bits_per_component=8,
+            color_space=b"/DeviceRGB",
+            filter_name="PNG",
+            decode_parms=None,
+            data=b"PNG-DATA",
+        )
+
+        self.assertEqual(("png", b"PNG-DATA"), image_to_archive_member(image))
 
     def test_flate_indexed_png_predictor_image_is_wrapped_as_png(self):
         rows = [bytes([0x12]), bytes([0x34])]

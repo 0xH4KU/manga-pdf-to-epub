@@ -4,9 +4,9 @@ This roadmap keeps the project focused on its current niche: lossless fixed-layo
 
 Current verified baseline:
 
-- `.venv/bin/python -m py_compile epub_layout_gui.py epub_layout_model.py epub_batch_model.py epub_series_model.py pdf_to_epub_lossless.py pdf_to_cbz_lossless.py`
+- `.venv/bin/python -m py_compile epub_layout_gui.py epub_layout_gui_support.py epub_layout_preview.py epub_layout_model.py epub_batch_model.py epub_series_model.py epub_writer.py epub_validation.py pdf_to_epub_lossless.py pdf_to_cbz_lossless.py`
 - `.venv/bin/python -m unittest`
-- Result on 2026-05-20: 130 tests passed with the project `.venv`.
+- Result on 2026-05-20: 144 tests passed with the project `.venv`.
 
 Use `.venv/bin/python` for local verification. System `python3` may not have `fitz` / PyMuPDF installed.
 
@@ -28,14 +28,95 @@ Use `.venv/bin/python` for local verification. System `python3` may not have `fi
 
 ## Suggested Implementation Order
 
-1. Series project save/load.
-2. Series validation and safer export.
-3. Background series export with progress.
-4. CLI parity for GUI metadata/preset features.
-5. Preview performance improvements.
-6. EPUB validation upgrades.
-7. PDF compatibility expansion with real samples.
-8. Packaging and release polish.
+1. Refactor shared image/page/export helpers so EPUB, CBZ, and GUI model code reuse one path.
+2. Split oversized GUI/export modules along existing responsibilities.
+3. Series project save/load portability cleanup.
+4. Series validation and safer export.
+5. Background series export with progress.
+6. CLI parity for GUI metadata/preset features.
+7. Preview performance improvements.
+8. EPUB validation upgrades.
+9. PDF compatibility expansion with real samples.
+10. Packaging and release polish.
+
+## P0: Refactor Shared Conversion and Layout Logic
+
+Goal: stop common EPUB/CBZ/layout behavior from being copied across modules before new features add more branches.
+
+Why it matters:
+
+- Image payload selection is currently repeated in EPUB, CBZ, and layout model code.
+- `epub_layout_model.py` imports private helpers from `pdf_to_epub_lossless.py`.
+- Page/blank construction and count calculation are easy to drift when adding new image filters or inserted-page behavior.
+- These are low-risk extractions that make later CLI, validation, and compatibility work safer.
+
+Primary files:
+
+- `pdf_to_cbz_lossless.py`
+- `pdf_to_epub_lossless.py`
+- `epub_layout_model.py`
+- Shared image payload helper currently lives in `pdf_to_cbz_lossless.py`.
+- `epub_writer.py`
+- `test_pdf_to_cbz_lossless.py`
+- `test_pdf_to_epub_lossless.py`
+- `test_epub_layout_model.py`
+
+Tasks:
+
+- [x] Add one public helper for archive-ready image payloads, including the current `filter_name == "PNG"` passthrough.
+- [x] Replace duplicated `_image_payload()` helpers and CBZ inline PNG special-casing with the shared helper.
+- [x] Add one public media-type helper for supported image extensions.
+- [x] Stop importing private EPUB helpers from `epub_layout_model.py`.
+- [x] Add focused tests that EPUB, CBZ, and layout exports use the same payload rule for already-extracted PNG streams.
+- [ ] Add focused tests that unsupported image extensions still fail clearly.
+- [x] Keep page/blank construction explicit because source image pages and normalized spine pages have different semantics.
+- [x] Keep output filenames, EPUB manifest IDs, and existing byte-preservation behavior unchanged.
+
+Acceptance criteria:
+
+- [x] Adding support for a new image filter requires changing one payload helper, not three call sites.
+- [x] `epub_layout_model.py` no longer imports underscore-prefixed helpers from `pdf_to_epub_lossless.py`.
+- [x] Existing EPUB/CBZ archive contents remain byte-for-byte equivalent for current tests where deterministic ZIP metadata allows comparison.
+- [x] Full unit suite passes.
+
+## P0: Split Oversized Modules Without Changing Behavior
+
+Goal: reduce the risk of `epub_layout_gui.py` and `pdf_to_epub_lossless.py` becoming catch-all files.
+
+Why it matters:
+
+- `epub_layout_gui.py` is over 1300 lines and mixes UI construction, page editing, series workflow, background jobs, preview rendering, metadata, and command palette behavior.
+- `pdf_to_epub_lossless.py` mixes CLI parsing, EPUB writing, EPUB validation, XHTML/OPF templates, and page building.
+- Smaller modules make future changes easier to test and review.
+
+Primary files:
+
+- `epub_layout_gui.py`
+- `pdf_to_epub_lossless.py`
+- New: `epub_writer.py`
+- New: `epub_validation.py`
+- New: `epub_layout_gui_support.py`
+- New: `epub_layout_preview.py`
+- `test_epub_layout_gui.py`
+- `test_pdf_to_epub_lossless.py`
+
+Tasks:
+
+- [x] Move `EpubPage`, EPUB ZIP writing, OPF/nav/page template generation, and EPUB validation into focused modules while preserving public imports used by tests.
+- [x] Keep `pdf_to_epub_lossless.py` as the CLI and high-level conversion entrypoint.
+- [x] Move GUI-only support classes/functions such as command metadata, virtual blank entries, text-variable fallback, delete status formatting, and text-input event detection out of `epub_layout_gui.py`.
+- [x] Add compatibility imports or update tests so existing public behavior remains stable.
+- [x] Extract GUI refresh helpers for the repeated `refresh_list`, selection, `refresh_preview`, and active-volume-edited sequence.
+- [x] Extract deleted-entry restoration helper so grouped delete cancellation and undo use the same insertion logic.
+- [x] Move preview mapping and thumbnail cache-key helpers into `epub_layout_preview.py`.
+- [x] Avoid a large class hierarchy or generic framework; split only along concrete current responsibilities.
+
+Acceptance criteria:
+
+- [x] `epub_layout_gui.py` is materially smaller and mainly coordinates UI behavior.
+- [x] EPUB writing/validation can be understood without reading CLI parsing.
+- [x] No user-facing GUI behavior changes.
+- [x] Full unit suite passes after each extraction step.
 
 ## P0: Series Project Save/Load
 
@@ -66,31 +147,31 @@ Proposed format:
 
 Tasks:
 
-- [ ] Add `SeriesProject.to_payload(project_path: Path | None = None) -> dict`.
-- [ ] Add `SeriesProject.from_payload(payload: dict, project_path: Path | None = None) -> SeriesProject`.
-- [ ] Add helper functions for relative/absolute path serialization.
-- [ ] Add `LayoutModel.to_preset_payload() -> dict` so save project does not need to write temporary preset files.
-- [ ] Add `LayoutModel.from_preset_payload` or reuse `apply_preset_payload` after loading from PDF.
-- [ ] Add GUI commands: `Save Project...`, `Open Project...`.
-- [ ] Add command palette entries for project save/load.
-- [ ] Update status bar after project load.
+- [x] Add `SeriesProject.to_payload(project_path: Path | None = None) -> dict`.
+- [x] Add `SeriesProject.from_payload(payload: dict, project_path: Path | None = None) -> SeriesProject`.
+- [x] Add helper functions for relative/absolute path serialization.
+- [x] Add `LayoutModel.to_preset_payload() -> dict` so save project does not need to write temporary preset files.
+- [x] Add `LayoutModel.from_preset_payload` or reuse `apply_preset_payload` after loading from PDF.
+- [x] Add GUI commands: `Save Project...`, `Open Project...`.
+- [x] Add command palette entries for project save/load.
+- [x] Update status bar after project load.
 - [ ] Ensure active series selection is restored if the saved active volume still exists.
 
 Acceptance criteria:
 
-- [ ] User can import a series, edit multiple volumes, save a project file, restart the GUI, open the project, and see the same volume statuses.
-- [ ] Ready/Edited/Failed/Unreviewed states survive round-trip.
-- [ ] Per-volume blanks, deletions, inserted images, cover selection, cover-only mode, title/author/language survive round-trip.
+- [x] User can import a series, edit multiple volumes, save a project file, restart the GUI, open the project, and see the same volume statuses.
+- [x] Ready/Edited/Failed/Unreviewed states survive round-trip.
+- [x] Per-volume blanks, deletions, inserted images, cover selection, cover-only mode, title/author/language survive round-trip.
 - [ ] Missing PDFs or inserted images produce clear warnings instead of crashing the whole project load.
-- [ ] Project files saved next to PDFs continue working if the folder is moved together.
+- [x] Project files saved next to PDFs continue working if the folder is moved together.
 
 Tests:
 
-- [ ] Unit test project payload round-trip with two volumes and different statuses.
-- [ ] Unit test relative path restoration.
+- [x] Unit test project payload round-trip with two volumes and different statuses.
+- [x] Unit test relative path restoration.
 - [ ] Unit test missing inserted image warning.
-- [ ] GUI unit test that `Save Project...` calls the model serializer and updates status.
-- [ ] GUI unit test that `Open Project...` refreshes series list, metadata fields, and preview.
+- [x] GUI unit test that `Save Project...` calls the model serializer and updates status.
+- [x] GUI unit test that `Open Project...` refreshes series list, metadata fields, and preview.
 
 ## P0: Series Validation Before Export
 
@@ -110,39 +191,39 @@ Primary files:
 
 Checks to add:
 
-- [ ] Output filename collision after safe filename generation.
-- [ ] Missing source PDF.
+- [x] Output filename collision after safe filename generation.
+- [x] Missing source PDF.
 - [ ] Missing inserted image referenced by a volume layout.
 - [ ] Zero image pages after edits.
 - [ ] Cover-only export would remove all reading pages.
 - [ ] Page count differs from first loaded volume or an optional baseline.
-- [ ] Duplicate volume numbers after import.
+- [x] Duplicate volume numbers after import.
 - [ ] Unsupported image filter errors during lazy model load.
 
 Tasks:
 
-- [ ] Add `SeriesProject.validate_ready(output_dir: Path) -> dict[str, int]`.
-- [ ] Add `SeriesProject.validate_all(output_dir: Path) -> dict[str, int]`.
-- [ ] Store warnings on each `SeriesVolume`.
-- [ ] Update `export_ready` to validate first.
-- [ ] Decide whether warnings block export. Recommended first pass: warnings do not block, errors block.
+- [x] Add `SeriesProject.validate_ready(output_dir: Path) -> dict[str, int]`.
+- [x] Add `SeriesProject.validate_all(output_dir: Path) -> dict[str, int]`.
+- [x] Store warnings on each `SeriesVolume`.
+- [x] Update `export_ready` to validate first.
+- [x] Decide whether warnings block export. Recommended first pass: warnings do not block, errors block.
 - [ ] Show a summary dialog before export if warnings exist.
 - [ ] Add a command palette item: `Validate Series`.
 
 Acceptance criteria:
 
-- [ ] Export summary distinguishes exported, failed, skipped, and warning counts.
+- [x] Export summary distinguishes exported, failed, skipped, and warning counts.
 - [ ] Filename collision is reported before any colliding EPUB is overwritten.
 - [ ] Missing inserted image is tied to the exact volume and path.
-- [ ] Failed volume does not stop later ready volumes from exporting.
+- [x] Failed volume does not stop later ready volumes from exporting.
 
 Tests:
 
-- [ ] Unit test filename collision warnings.
-- [ ] Unit test missing PDF failure.
+- [x] Unit test filename collision warnings.
+- [x] Unit test missing PDF failure.
 - [ ] Unit test missing inserted cover warning/failure.
-- [ ] Unit test duplicate volume numbers.
-- [ ] Unit test export skips invalid volumes and continues valid ones.
+- [x] Unit test duplicate volume numbers.
+- [x] Unit test export skips invalid volumes and continues valid ones.
 
 ## P1: Background Series Export With Progress
 
@@ -161,26 +242,26 @@ Primary files:
 
 Tasks:
 
-- [ ] Add an iterator-style export API, e.g. `SeriesProject.export_ready_iter(output_dir)`.
+- [x] Add an iterator-style export API, e.g. `SeriesProject.export_ready_iter(output_dir)`.
 - [ ] Yield per-volume progress events: started, exported, skipped, failed.
 - [ ] Add a small progress window with current volume, counts, and a disabled/enabled close button.
 - [ ] Add cancel support if simple to wire safely.
-- [ ] Keep `_busy` true during export and reject concurrent open/export operations.
+- [x] Keep `_busy` true during export and reject concurrent open/export operations.
 - [ ] Refresh series list after each finished volume.
-- [ ] Write the final summary to the status bar.
+- [x] Write the final summary to the status bar.
 
 Acceptance criteria:
 
-- [ ] GUI remains responsive during export.
+- [x] GUI remains responsive during export.
 - [ ] User sees current volume and aggregate progress.
-- [ ] Failure in one volume is visible but does not hide the final summary.
-- [ ] Reentrant export/open actions are blocked while export runs.
+- [x] Failure in one volume is visible but does not hide the final summary.
+- [x] Reentrant export/open actions are blocked while export runs.
 
 Tests:
 
-- [ ] Unit test `_run_background` is used for series export.
-- [ ] Unit test progress callback receives each volume.
-- [ ] Unit test failed volume updates status and error.
+- [x] Unit test `_run_background` is used for series export.
+- [x] Unit test progress callback receives each volume.
+- [x] Unit test failed volume updates status and error.
 - [ ] Unit test busy state blocks a second export.
 
 ## P1: CLI Parity for GUI Metadata and Presets
@@ -530,4 +611,3 @@ For each completed item:
 - [ ] README is updated when user-facing behavior changes.
 - [ ] Manual GUI smoke test is performed for GUI changes.
 - [ ] Existing lossless JPEG behavior is not regressed.
-

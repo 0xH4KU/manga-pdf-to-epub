@@ -180,7 +180,7 @@ class SeriesProject:
                     "output_path": _serialize_optional_path(volume.output_path, project_path),
                     "warnings": list(volume.warnings),
                     "error": volume.error,
-                    "layout": _layout_payload_for_volume(volume),
+                    "layout": _serialize_layout_payload(_layout_payload_for_volume(volume), project_path),
                 }
                 for volume in self.volumes
             ],
@@ -200,7 +200,7 @@ class SeriesProject:
                     output_path=_deserialize_optional_path(item.get("output_path"), project_path),
                     warnings=list(item.get("warnings", [])),
                     error=item.get("error"),
-                    layout_payload=item.get("layout"),
+                    layout_payload=_deserialize_layout_payload(item.get("layout"), project_path),
                 )
             )
         return cls(
@@ -278,6 +278,42 @@ def _layout_payload_for_volume(volume: SeriesVolume) -> dict | None:
     if volume.layout_model is not None:
         return volume.layout_model.to_preset_payload()
     return volume.layout_payload
+
+
+def _serialize_layout_payload(payload: dict | None, project_path: Path | None) -> dict | None:
+    if payload is None:
+        return None
+    serialized = dict(payload)
+    serialized["entries"] = [
+        _serialize_layout_entry(entry, project_path)
+        for entry in payload.get("entries", [])
+    ]
+    return serialized
+
+
+def _serialize_layout_entry(entry: dict, project_path: Path | None) -> dict:
+    serialized = dict(entry)
+    if serialized.get("kind") == "inserted" and serialized.get("path"):
+        serialized["path"] = _serialize_path(Path(serialized["path"]), project_path)
+    return serialized
+
+
+def _deserialize_layout_payload(payload: dict | None, project_path: Path | None) -> dict | None:
+    if payload is None:
+        return None
+    restored = dict(payload)
+    restored["entries"] = [
+        _deserialize_layout_entry(entry, project_path)
+        for entry in payload.get("entries", [])
+    ]
+    return restored
+
+
+def _deserialize_layout_entry(entry: dict, project_path: Path | None) -> dict:
+    restored = dict(entry)
+    if restored.get("kind") == "inserted" and restored.get("path"):
+        restored["path"] = str(_deserialize_path(restored["path"], project_path))
+    return restored
 
 
 def _serialize_optional_path(path: Path | None, project_path: Path | None) -> str | None:

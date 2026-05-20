@@ -4,30 +4,15 @@
 from __future__ import annotations
 
 import argparse
-import html
-import mimetypes
-import posixpath
-import uuid
-from dataclasses import dataclass
 from pathlib import Path
-from zipfile import ZIP_DEFLATED, ZIP_STORED, ZipFile, ZipInfo
-from xml.etree import ElementTree
 
+from epub_validation import validate_epub_structure
+from epub_writer import EpubPage, media_type_for_ext, write_epub_from_pages
 from pdf_to_cbz_lossless import ImageStream, PdfImageError, image_to_archive_member, images_in_pdf_page_order
 
 
-@dataclass(frozen=True)
-class EpubPage:
-    index: int
-    width: int
-    height: int
-    image_href: str | None
-    image_media_type: str | None
-    image_data: bytes | None
-    xhtml_href: str
-    item_id: str
-    label: str
-    is_blank: bool = False
+_validate_epub_structure = validate_epub_structure
+_media_type_for_ext = media_type_for_ext
 
 
 def convert_pdf_to_epub(
@@ -73,109 +58,6 @@ def convert_pdf_to_epub(
     )
 
 
-def write_epub_from_pages(
-    pages: list[EpubPage],
-    epub_path: Path,
-    source_path: Path,
-    title: str,
-    author: str | None = None,
-    language: str = "zh-Hant",
-    overwrite: bool = False,
-    apple_books: bool = False,
-    pair_first_two_pages: bool = False,
-    cover_item_id: str | None = None,
-    exclude_cover_from_reading: bool = False,
-    counts: dict[str, int] | None = None,
-) -> dict[str, int]:
-    if epub_path.exists() and not overwrite:
-        raise PdfImageError(f"Refusing to overwrite existing file: {epub_path}")
-    identifier = f"urn:uuid:{uuid.uuid5(uuid.NAMESPACE_URL, source_path.resolve().as_uri())}"
-
-    cover_id = cover_item_id or _first_image_item_id(pages)
-    _validate_cover_item_id(pages, cover_id)
-    reading_pages = _reading_pages(pages, cover_id, exclude_cover_from_reading)
-    if not reading_pages:
-        raise PdfImageError("Cover-only export would leave no reading pages")
-
-    with ZipFile(epub_path, "w") as archive:
-        _write_stored(archive, "mimetype", b"application/epub+zip")
-        _write_deflated(archive, "META-INF/container.xml", _container_xml())
-        _write_deflated(
-            archive,
-            "EPUB/content.opf",
-            _content_opf(
-                title,
-                identifier,
-                pages,
-                reading_pages,
-                apple_books,
-                pair_first_two_pages,
-                author,
-                language,
-                cover_id,
-            ),
-        )
-        _write_deflated(archive, "EPUB/nav.xhtml", _nav_xhtml(title, reading_pages))
-        _write_deflated(archive, "EPUB/styles/page.css", _page_css())
-        for page in reading_pages:
-            if page.is_blank:
-                _write_deflated(archive, f"EPUB/{page.xhtml_href}", _blank_page_xhtml(title, page))
-            else:
-                _write_deflated(archive, f"EPUB/{page.xhtml_href}", _page_xhtml(title, page))
-        for page in pages:
-            if not page.is_blank:
-                _write_stored(archive, f"EPUB/{page.image_href}", page.image_data)
-
-    _validate_epub_structure(epub_path)
-    result = dict(counts or {})
-    result["total"] = len(reading_pages)
-    return result
-
-
-def _validate_epub_structure(epub_path: Path) -> None:
-    with ZipFile(epub_path) as archive:
-        names = archive.namelist()
-        name_set = set(names)
-        if not names or names[0] != "mimetype":
-            raise PdfImageError("EPUB mimetype must be the first zip entry")
-        if archive.getinfo("mimetype").compress_type != ZIP_STORED:
-            raise PdfImageError("EPUB mimetype must be stored without compression")
-        if archive.read("mimetype") != b"application/epub+zip":
-            raise PdfImageError("EPUB mimetype has invalid content")
-        for required in ("META-INF/container.xml", "EPUB/content.opf"):
-            if required not in name_set:
-                raise PdfImageError(f"Required EPUB file missing: {required}")
-
-        opf = ElementTree.fromstring(archive.read("EPUB/content.opf"))
-        ns = {"opf": "http://www.idpf.org/2007/opf"}
-        manifest: dict[str, tuple[str, str, str]] = {}
-        for item in opf.findall(".//opf:manifest/opf:item", ns):
-            item_id = item.attrib.get("id")
-            href = item.attrib.get("href")
-            media_type = item.attrib.get("media-type", "")
-            properties = item.attrib.get("properties", "")
-            if not item_id or not href:
-                continue
-            manifest[item_id] = (href, media_type, properties)
-            archive_path = posixpath.normpath(posixpath.join("EPUB", href))
-            if archive_path not in name_set:
-                raise PdfImageError(f"Manifest href missing from EPUB: {archive_path}")
-
-        for itemref in opf.findall(".//opf:spine/opf:itemref", ns):
-            idref = itemref.attrib.get("idref")
-            if idref and idref not in manifest:
-                raise PdfImageError(f"Spine itemref {idref} has no manifest item")
-
-        cover_items = [
-            (item_id, media_type)
-            for item_id, (_href, media_type, properties) in manifest.items()
-            if "cover-image" in properties.split()
-        ]
-        for item_id, media_type in cover_items:
-            if not media_type.startswith("image/"):
-                raise PdfImageError(f"Cover item {item_id} is not an image")
-
-
 def _build_pages(
     images: list[ImageStream],
     blank_pages_before_cover: int = 0,
@@ -189,7 +71,7 @@ def _build_pages(
             for blank_index in range(1, blank_pages_before_cover + 1):
                 counts["blank"] = counts.get("blank", 0) + 1
                 pages.append(_blank_page(image, blank_index, "before"))
-        ext, payload = _image_payload(image)
+        ext, payload = image_to_archive_member(image)
         counts[ext] = counts.get(ext, 0) + 1
         page_number = f"{image.index:0{padding}d}"
         image_href = f"images/page-{page_number}.{ext}"
@@ -199,7 +81,7 @@ def _build_pages(
                 width=image.width,
                 height=image.height,
                 image_href=image_href,
-                image_media_type=_media_type_for_ext(ext),
+                image_media_type=media_type_for_ext(ext),
                 image_data=payload,
                 xhtml_href=f"xhtml/page-{page_number}.xhtml",
                 item_id=f"page-{image.index:04d}",
@@ -229,212 +111,6 @@ def _blank_page(reference: ImageStream, blank_index: int, position: str) -> Epub
         label=f"Blank {position} cover {blank_index}",
         is_blank=True,
     )
-
-
-def _image_payload(image: ImageStream) -> tuple[str, bytes]:
-    if image.filter_name == "PNG":
-        return "png", image.data
-    return image_to_archive_member(image)
-
-
-def _media_type_for_ext(ext: str) -> str:
-    if ext == "jpg":
-        return "image/jpeg"
-    guessed = mimetypes.types_map.get(f".{ext}")
-    if guessed:
-        return guessed
-    raise PdfImageError(f"Unsupported image extension for EPUB: {ext}")
-
-
-def _write_stored(archive: ZipFile, filename: str, payload: bytes) -> None:
-    info = ZipInfo(filename)
-    info.compress_type = ZIP_STORED
-    archive.writestr(info, payload)
-
-
-def _write_deflated(archive: ZipFile, filename: str, payload: str | bytes) -> None:
-    info = ZipInfo(filename)
-    info.compress_type = ZIP_DEFLATED
-    if isinstance(payload, str):
-        payload = payload.encode("utf-8")
-    archive.writestr(info, payload)
-
-
-def _container_xml() -> str:
-    return """<?xml version="1.0" encoding="UTF-8"?>
-<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
-  <rootfiles>
-    <rootfile full-path="EPUB/content.opf" media-type="application/oebps-package+xml"/>
-  </rootfiles>
-</container>
-"""
-
-
-def _content_opf(
-    title: str,
-    identifier: str,
-    pages: list[EpubPage],
-    reading_pages: list[EpubPage],
-    apple_books: bool = False,
-    pair_first_two_pages: bool = False,
-    author: str | None = None,
-    language: str = "zh-Hant",
-    cover_item_id: str | None = None,
-) -> str:
-    title_xml = html.escape(title, quote=True)
-    language_xml = html.escape(language or "zh-Hant", quote=True)
-    creator_xml = html.escape(author, quote=True) if author else None
-    cover_id = cover_item_id or _first_image_item_id(pages)
-    image_items = "\n".join(
-        f'    <item id="img-{page.index:04d}" href="{page.image_href}" media-type="{page.image_media_type}"'
-        f'{" properties=\"cover-image\"" if page.item_id == cover_id else ""}/>'
-        for page in pages
-        if not page.is_blank
-    )
-    xhtml_items = "\n".join(
-        f'    <item id="{page.item_id}" href="{page.xhtml_href}" media-type="application/xhtml+xml"'
-        f'{" properties=\"svg\"" if not page.is_blank else ""}/>'
-        for page in reading_pages
-    )
-    spread = "none" if apple_books else "auto"
-    if apple_books:
-        spine_items = "\n".join(
-            f'    <itemref idref="{page.item_id}" properties="rendition:page-spread-center"/>'
-            for page in reading_pages
-        )
-    else:
-        spine_items = "\n".join(_spine_itemref(page, pair_first_two_pages) for page in reading_pages)
-    return f"""<?xml version="1.0" encoding="UTF-8"?>
-<package version="3.0" unique-identifier="bookid" prefix="rendition: http://www.idpf.org/vocab/rendition/#" xmlns="http://www.idpf.org/2007/opf">
-  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
-    <dc:identifier id="bookid">{html.escape(identifier, quote=True)}</dc:identifier>
-    <dc:title>{title_xml}</dc:title>
-{f"    <dc:creator>{creator_xml}</dc:creator>" if creator_xml else ""}
-    <dc:language>{language_xml}</dc:language>
-    <meta property="dcterms:modified">2026-05-17T00:00:00Z</meta>
-    <meta property="rendition:layout">pre-paginated</meta>
-    <meta property="rendition:orientation">auto</meta>
-    <meta property="rendition:spread">{spread}</meta>
-  </metadata>
-  <manifest>
-    <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
-    <item id="css-page" href="styles/page.css" media-type="text/css"/>
-{image_items}
-{xhtml_items}
-  </manifest>
-  <spine page-progression-direction="rtl">
-{spine_items}
-  </spine>
-</package>
-"""
-
-
-def _first_image_item_id(pages: list[EpubPage]) -> str | None:
-    for page in pages:
-        if not page.is_blank:
-            return page.item_id
-    return None
-
-
-def _validate_cover_item_id(pages: list[EpubPage], cover_item_id: str | None) -> None:
-    if cover_item_id is None:
-        return
-    if any(not page.is_blank and page.item_id == cover_item_id for page in pages):
-        return
-    raise PdfImageError(f"Invalid cover item ID: {cover_item_id}")
-
-
-def _reading_pages(pages: list[EpubPage], cover_item_id: str | None, exclude_cover_from_reading: bool) -> list[EpubPage]:
-    if not exclude_cover_from_reading or cover_item_id is None:
-        return pages
-    return [page for page in pages if page.item_id != cover_item_id]
-
-
-def _spine_itemref(page: EpubPage, pair_first_two_pages: bool) -> str:
-    if pair_first_two_pages and not page.is_blank and page.index in {1, 2}:
-        side = "right" if page.index == 1 else "left"
-        return f'    <itemref idref="{page.item_id}" properties="rendition:page-spread-{side}"/>'
-    return f'    <itemref idref="{page.item_id}"/>'
-
-
-def _nav_xhtml(title: str, pages: list[EpubPage]) -> str:
-    title_xml = html.escape(title, quote=True)
-    links = "\n".join(
-        f'        <li><a href="{page.xhtml_href}">{html.escape(page.label, quote=True)}</a></li>'
-        for page in pages
-    )
-    return f"""<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE html>
-<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="zh-Hant" xml:lang="zh-Hant">
-  <head>
-    <title>{title_xml}</title>
-  </head>
-  <body>
-    <nav epub:type="toc" id="toc">
-      <h1>{title_xml}</h1>
-      <ol>
-{links}
-      </ol>
-    </nav>
-  </body>
-</html>
-"""
-
-
-def _page_css() -> str:
-    return """html, body {
-  margin: 0;
-  padding: 0;
-  width: 100%;
-  height: 100%;
-  background: #000;
-}
-
-svg {
-  display: block;
-  width: 100vw;
-  height: 100vh;
-}
-"""
-
-
-def _page_xhtml(title: str, page: EpubPage) -> str:
-    page_title = html.escape(f"{title} - Page {page.index}", quote=True)
-    href = html.escape(f"../{page.image_href}", quote=True)
-    return f"""<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE html>
-<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="zh-Hant" xml:lang="zh-Hant">
-  <head>
-    <title>{page_title}</title>
-    <meta name="viewport" content="width={page.width}, height={page.height}"/>
-    <link rel="stylesheet" type="text/css" href="../styles/page.css"/>
-  </head>
-  <body>
-    <svg xmlns="http://www.w3.org/2000/svg" version="1.1" width="{page.width}" height="{page.height}" viewBox="0 0 {page.width} {page.height}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Page {page.index}">
-      <image width="{page.width}" height="{page.height}" href="{href}"/>
-    </svg>
-  </body>
-</html>
-"""
-
-
-def _blank_page_xhtml(title: str, page: EpubPage) -> str:
-    page_title = html.escape(f"{title} - {page.label}", quote=True)
-    return f"""<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE html>
-<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="zh-Hant" xml:lang="zh-Hant">
-  <head>
-    <title>{page_title}</title>
-    <meta name="viewport" content="width={page.width}, height={page.height}"/>
-    <link rel="stylesheet" type="text/css" href="../styles/page.css"/>
-  </head>
-  <body>
-    <svg xmlns="http://www.w3.org/2000/svg" version="1.1" width="{page.width}" height="{page.height}" viewBox="0 0 {page.width} {page.height}" preserveAspectRatio="xMidYMid meet" role="presentation" aria-label="{html.escape(page.label, quote=True)}">
-      <rect width="{page.width}" height="{page.height}" fill="#ffffff"/>
-    </svg>
-  </body>
-</html>
-"""
 
 
 def main() -> int:

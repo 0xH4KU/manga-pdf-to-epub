@@ -200,6 +200,28 @@ class EpubSeriesModelTests(unittest.TestCase):
             restored = SeriesProject.from_payload(payload, project_path)
             self.assertEqual(pdf_path, restored.volumes[0].pdf_path)
 
+    def test_project_payload_uses_relative_paths_inside_saved_layout_entries(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project_path = Path(tmp) / "projects" / "series-project.json"
+            pdf_path = Path(tmp) / "pdfs" / "Series Vol.01.pdf"
+            cover_path = Path(tmp) / "covers" / "cover.png"
+            project_path.parent.mkdir()
+            pdf_path.parent.mkdir()
+            cover_path.parent.mkdir()
+            pdf_path.write_bytes(_two_page_pdf_with_late_cover())
+            cover_path.write_bytes(_tiny_png())
+            project = SeriesProject.from_pdfs([pdf_path], title="Series")
+            model = project.model_for_volume(project.volumes[0])
+            model.insert_image(1, cover_path)
+
+            payload = project.to_payload(project_path)
+            inserted = payload["volumes"][0]["layout"]["entries"][1]
+
+            self.assertEqual({"kind": "inserted", "path": "../covers/cover.png"}, inserted)
+            restored = SeriesProject.from_payload(payload, project_path)
+            restored_model = restored.model_for_volume(restored.volumes[0])
+            self.assertEqual(cover_path, restored_model.entries[1].inserted_path)
+
     def test_validate_all_reports_duplicate_volumes_missing_pdfs_and_filename_collisions(self):
         with tempfile.TemporaryDirectory() as tmp:
             existing_pdf = Path(tmp) / "Series Vol.01.pdf"

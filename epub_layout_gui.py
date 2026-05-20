@@ -6,22 +6,26 @@ from __future__ import annotations
 import threading
 import tkinter as tk
 import json
-from dataclasses import dataclass
 from pathlib import Path
 from tkinter import filedialog, messagebox, simpledialog, ttk
 
 import fitz
 
 from epub_layout_model import LayoutEntry, LayoutModel
+from epub_layout_gui_support import (
+    AppCommand,
+    PlainTextVariable,
+    VirtualBlank,
+    delete_status,
+    event_from_text_input,
+)
+from epub_layout_preview import (
+    preview_entries,
+    preview_index_for_selection,
+    spread_slots,
+    thumbnail_cache_key,
+)
 from epub_series_model import SeriesProject, SeriesVolume
-
-
-@dataclass(frozen=True)
-class AppCommand:
-    label: str
-    method_name: str
-    args: tuple = ()
-    keywords: tuple[str, ...] = ()
 
 
 class EpubLayoutApp:
@@ -87,7 +91,7 @@ class EpubLayoutApp:
         self.root.bind_all("<Control-k>", lambda _event: self.open_command_palette())
 
     def _delete_shortcut(self, event) -> str | None:
-        if _event_from_text_input(event):
+        if event_from_text_input(event):
             return "break"
         self.delete_selected_entry()
         return None
@@ -747,12 +751,8 @@ class EpubLayoutApp:
         try:
             label = self.model.entries[from_index].label
             final_index = self.model.move_entry(from_index, to_index)
-            self.refresh_list(preserve_yview=True)
-            self.page_list.selection_clear(0, tk.END)
-            self.page_list.selection_set(final_index)
-            self.refresh_preview()
+            self._refresh_after_layout_edit(select_index=final_index)
             self.status.set(f"Moved {label} to position {final_index + 1}.")
-            self._mark_active_volume_edited()
         except Exception as exc:
             messagebox.showerror("Move page failed", str(exc))
 
@@ -765,12 +765,8 @@ class EpubLayoutApp:
             index += 1
         try:
             self.model.insert_blank(index)
-            self.refresh_list(preserve_yview=True)
-            self.page_list.selection_clear(0, tk.END)
-            self.page_list.selection_set(index)
-            self.refresh_preview()
+            self._refresh_after_layout_edit(select_index=index)
             self.status.set(f"Inserted blank page at position {index + 1}.")
-            self._mark_active_volume_edited()
         except Exception as exc:
             messagebox.showerror("Insert blank failed", str(exc))
 
@@ -790,12 +786,8 @@ class EpubLayoutApp:
             index += 1
         try:
             self.model.insert_image(index, Path(filename))
-            self.refresh_list(preserve_yview=True)
-            self.page_list.selection_clear(0, tk.END)
-            self.page_list.selection_set(index)
-            self.refresh_preview()
+            self._refresh_after_layout_edit(select_index=index)
             self.status.set(f"Inserted image: {Path(filename).name}")
-            self._mark_active_volume_edited()
         except Exception as exc:
             messagebox.showerror("Insert image failed", str(exc))
 
@@ -811,12 +803,9 @@ class EpubLayoutApp:
         try:
             self.deleted_entries.append([(index, entry)])
             self.model.delete_entry(index)
-            self.refresh_list(preserve_yview=True)
-            if self.model.entries:
-                self.page_list.selection_set(min(index, len(self.model.entries) - 1))
-            self.refresh_preview()
+            select_index = min(index, len(self.model.entries) - 1) if self.model.entries else None
+            self._refresh_after_layout_edit(select_index=select_index)
             self.status.set(f"Removed {entry.label} from layout.")
-            self._mark_active_volume_edited()
         except Exception as exc:
             messagebox.showerror("Delete page failed", str(exc))
 
@@ -827,16 +816,8 @@ class EpubLayoutApp:
             self.unready_selected()
             return
         group = self.deleted_entries.pop()
-        restored_indexes: list[int] = []
-        for original_index, entry in sorted(group, key=lambda item: item[0]):
-            index = min(max(original_index, 0), len(self.model.entries))
-            self.model.entries.insert(index, entry)
-            restored_indexes.append(index)
-        self.refresh_list(preserve_yview=True)
-        self.page_list.selection_clear(0, tk.END)
-        self.page_list.selection_set(restored_indexes[0])
-        self.refresh_preview()
-        self._mark_active_volume_edited()
+        restored_indexes = self._restore_entries(group)
+        self._refresh_after_layout_edit(select_index=restored_indexes[0] if restored_indexes else None)
         if len(group) == 1:
             entry = group[0][1]
             self.status.set(f"Recovered {entry.label} at position {restored_indexes[0] + 1}.")
@@ -847,23 +828,15 @@ class EpubLayoutApp:
         if self.model is None:
             return
         self.model.insert_blank(0)
-        self.refresh_list(preserve_yview=True)
-        self.page_list.selection_clear(0, tk.END)
-        self.page_list.selection_set(0)
-        self.refresh_preview()
+        self._refresh_after_layout_edit(select_index=0)
         self.status.set("Inserted one blank page before cover.")
-        self._mark_active_volume_edited()
 
     def quick_blank_after_cover(self) -> None:
         if self.model is None:
             return
         self.model.insert_blank(1)
-        self.refresh_list(preserve_yview=True)
-        self.page_list.selection_clear(0, tk.END)
-        self.page_list.selection_set(1)
-        self.refresh_preview()
+        self._refresh_after_layout_edit(select_index=1)
         self.status.set("Inserted one blank page after cover.")
-        self._mark_active_volume_edited()
 
     def ask_delete_first(self) -> None:
         count = self._ask_positive_integer("Delete first pages", "How many pages from the start?")
@@ -944,21 +917,39 @@ class EpubLayoutApp:
                 labels = ", ".join(entry.label for _index, entry in deleted[:5])
                 suffix = "" if len(deleted) <= 5 else f", and {len(deleted) - 5} more"
                 if not messagebox.askyesno("Delete pages", f"Remove {labels}{suffix} from this export?"):
-                    for original_index, entry in sorted(deleted, key=lambda item: item[0]):
-                        index = min(max(original_index, 0), len(self.model.entries))
-                        self.model.entries.insert(index, entry)
+                    self._restore_entries(deleted)
                     return
             self.deleted_entries.append(deleted)
-            self.refresh_list(preserve_yview=True)
-            self.page_list.selection_clear(0, tk.END)
-            if self.model.entries:
-                first_deleted = min(index for index, _entry in deleted)
-                self.page_list.selection_set(min(first_deleted, len(self.model.entries) - 1))
-            self.refresh_preview()
-            self.status.set(_delete_status(deleted, status_message))
-            self._mark_active_volume_edited()
+            first_deleted = min(index for index, _entry in deleted)
+            select_index = min(first_deleted, len(self.model.entries) - 1) if self.model.entries else None
+            self._refresh_after_layout_edit(select_index=select_index)
+            self.status.set(delete_status(deleted, status_message))
         except Exception as exc:
             messagebox.showerror("Delete pages failed", str(exc))
+
+    def _restore_entries(self, entries: list[tuple[int, LayoutEntry]]) -> list[int]:
+        if self.model is None:
+            return []
+        restored_indexes: list[int] = []
+        for original_index, entry in sorted(entries, key=lambda item: item[0]):
+            index = min(max(original_index, 0), len(self.model.entries))
+            self.model.entries.insert(index, entry)
+            restored_indexes.append(index)
+        return restored_indexes
+
+    def _refresh_after_layout_edit(
+        self,
+        select_index: int | None = None,
+        preserve_yview: bool = True,
+        mark_edited: bool = True,
+    ) -> None:
+        self.refresh_list(preserve_yview=preserve_yview)
+        self.page_list.selection_clear(0, tk.END)
+        if select_index is not None:
+            self.page_list.selection_set(select_index)
+        self.refresh_preview()
+        if mark_edited:
+            self._mark_active_volume_edited()
 
     def _mark_active_volume_edited(self) -> None:
         volume = getattr(self, "active_series_volume", None)
@@ -1151,9 +1142,9 @@ class EpubLayoutApp:
 
     def _ensure_metadata_label_vars(self) -> None:
         if not hasattr(self, "title_label_var"):
-            self.title_label_var = _PlainTextVariable("Title")
+            self.title_label_var = PlainTextVariable("Title")
         if not hasattr(self, "author_label_var"):
-            self.author_label_var = _PlainTextVariable("Author")
+            self.author_label_var = PlainTextVariable("Author")
 
     def _is_cover_entry(self, entry: LayoutEntry) -> bool:
         if self.model is None:
@@ -1197,26 +1188,15 @@ class EpubLayoutApp:
             self._draw_entry(entry, x, y, page_w, page_h)
 
     def _preview_index_for_selection(self, selected: int) -> int:
-        if self._uses_apple_cover_gap() and selected >= 1:
-            return selected + 1
-        return selected
+        return preview_index_for_selection(selected, self._uses_apple_cover_gap())
 
     def _spread_slots(self, pair_start: int, gap: int, page_w: int) -> list[tuple[int, int]]:
-        left = (gap, gap)
-        right = (gap * 2 + page_w, gap)
-        if self._uses_apple_cover_gap() and pair_start == 0:
-            return [left, right]
-        # RTL preview: first item in regular pairs is drawn on the right.
-        return [right, left]
+        return spread_slots(pair_start, gap, page_w, self._uses_apple_cover_gap())
 
     def _preview_entries(self):
         if self.model is None:
             return []
-        entries = list(self.model.entries)
-        if self._uses_apple_cover_gap():
-            cover_gap = _VirtualBlank("Virtual Apple Books cover gap")
-            return [entries[0], cover_gap, *entries[1:]]
-        return entries
+        return preview_entries(list(self.model.entries), self._uses_apple_cover_gap())
 
     def _uses_apple_cover_gap(self) -> bool:
         if self.model is None or not self.model.entries:
@@ -1226,7 +1206,7 @@ class EpubLayoutApp:
     def _draw_entry(self, entry, x: int, y: int, max_w: int, max_h: int) -> None:
         self.preview.create_rectangle(x, y, x + max_w, y + max_h, fill="#ffffff", outline="#707070")
         if entry.is_blank:
-            fill = "#a0a0a0" if isinstance(entry, _VirtualBlank) else "#606060"
+            fill = "#a0a0a0" if isinstance(entry, VirtualBlank) else "#606060"
             self.preview.create_text(x + max_w // 2, y + max_h // 2, text=entry.label, fill=fill)
             return
         if getattr(entry, "source_index", None) is None:
@@ -1276,53 +1256,7 @@ class EpubLayoutApp:
             return None
 
     def _thumbnail_cache_key(self, entry, max_w: int, max_h: int):
-        source_index = getattr(entry, "source_index", None)
-        if source_index is not None:
-            return ("source", source_index, max_w, max_h)
-        page = getattr(entry, "page", None)
-        item_id = getattr(page, "item_id", None)
-        if item_id is not None:
-            return ("entry", item_id, max_w, max_h)
-        return ("entry", id(entry), max_w, max_h)
-
-
-class _VirtualBlank:
-    def __init__(self, label: str):
-        self.label = label
-        self.is_blank = True
-
-
-class _PlainTextVariable:
-    def __init__(self, value: str):
-        self.value = value
-
-    def set(self, value: str) -> None:
-        self.value = value
-
-    def get(self) -> str:
-        return self.value
-
-
-def _event_from_text_input(event) -> bool:
-    widget = getattr(event, "widget", None)
-    if widget is None:
-        return False
-    try:
-        widget_class = widget.winfo_class()
-    except Exception:
-        return False
-    return widget_class in {"Entry", "TEntry", "Text", "TCombobox", "Spinbox", "TSpinbox"}
-
-
-def _delete_status(deleted: list[tuple[int, LayoutEntry]], fallback: str) -> str:
-    if not deleted:
-        return fallback
-    blank_count = sum(1 for _index, entry in deleted if entry.is_blank)
-    image_count = len(deleted) - blank_count
-    image_word = "image" if image_count == 1 else "images"
-    blank_word = "blank" if blank_count == 1 else "blanks"
-    return f"Deleted {len(deleted)} entries: {image_count} {image_word}, {blank_count} {blank_word}."
-
+        return thumbnail_cache_key(entry, max_w, max_h)
 
 def main() -> int:
     root = tk.Tk()

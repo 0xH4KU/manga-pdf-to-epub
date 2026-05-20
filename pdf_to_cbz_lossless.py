@@ -223,6 +223,8 @@ def _extract_filter_name(dictionary: bytes) -> str:
 
 
 def image_to_archive_member(image: ImageStream) -> tuple[str, bytes]:
+    if image.filter_name == "PNG":
+        return "png", image.data
     if image.filter_name == "DCTDecode":
         return "jpg", image.data
     if image.filter_name == "FlateDecode":
@@ -625,10 +627,7 @@ def convert_pdf_to_cbz(pdf_path: Path, cbz_path: Path, overwrite: bool = False) 
     padding = max(4, len(str(len(images))))
     with ZipFile(cbz_path, "w", compression=ZIP_STORED) as archive:
         for image in images:
-            if image.filter_name == "PNG":
-                ext, payload = "png", image.data
-            else:
-                ext, payload = image_to_archive_member(image)
+            ext, payload = image_to_archive_member(image)
             counts[ext] = counts.get(ext, 0) + 1
             info = ZipInfo(f"{image.index:0{padding}d}.{ext}")
             info.compress_type = ZIP_STORED

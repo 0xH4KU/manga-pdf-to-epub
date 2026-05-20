@@ -17,9 +17,13 @@ epub-layout-gui = "epub_layout_gui:main"
 py-modules = [
   "pdf_to_cbz_lossless",
   "pdf_to_epub_lossless",
+  "epub_writer",
+  "epub_validation",
   "epub_layout_model",
   "epub_batch_model",
   "epub_series_model",
+  "epub_layout_gui_support",
+  "epub_layout_preview",
   "epub_layout_gui",
 ]
 

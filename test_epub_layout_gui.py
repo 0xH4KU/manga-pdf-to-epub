@@ -1162,6 +1162,28 @@ class EpubLayoutGuiListTests(unittest.TestCase):
         self.assertEqual(["Page 1", "Blank 2"], [entry.label for entry in app.model.entries])
         self.assertFalse(hasattr(app, "series_refreshed"))
 
+    def test_refresh_after_layout_edit_centralizes_selection_preview_and_edit_state(self):
+        app = EpubLayoutApp.__new__(EpubLayoutApp)
+        app.model = _FakeDeleteModel([_entry("Page 1"), _entry("Page 2")])
+        volume = SimpleNamespace(status="Ready", volume_number=1)
+        app.active_series_volume = volume
+        app.series_project = SimpleNamespace(volumes=[volume])
+        app.series_list = _FakeListbox(selection=0)
+        app.page_list = _FakeListbox(selection=0)
+        app.refresh_list = lambda preserve_yview=False: setattr(app, "preserved_yview", preserve_yview)
+        app.refresh_preview = lambda: setattr(app, "preview_refreshed", True)
+        app.refresh_series_list = lambda: setattr(app, "series_refreshed", True)
+        app.refresh_workspace_status = lambda: setattr(app, "workspace_refreshed", True)
+
+        app._refresh_after_layout_edit(select_index=1)
+
+        self.assertTrue(app.preserved_yview)
+        self.assertEqual(1, app.page_list.selection)
+        self.assertTrue(app.preview_refreshed)
+        self.assertEqual("Edited", volume.status)
+        self.assertTrue(app.series_refreshed)
+        self.assertTrue(app.workspace_refreshed)
+
     def test_set_selected_as_cover_marks_ready_series_volume_edited(self):
         app = EpubLayoutApp.__new__(EpubLayoutApp)
         app.model = _FakeDeleteModel([_entry("Page 1"), _entry("Page 2")])
