@@ -455,7 +455,7 @@ class PdfToEpubLosslessTests(unittest.TestCase):
                     """<?xml version="1.0" encoding="UTF-8"?>
 <package xmlns="http://www.idpf.org/2007/opf">
   <manifest>
-    <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml"/>
+    <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
   </manifest>
   <spine><itemref idref="missing-page"/></spine>
 </package>
@@ -485,6 +485,109 @@ class PdfToEpubLosslessTests(unittest.TestCase):
 
             with self.assertRaisesRegex(PdfImageError, "Manifest href missing from EPUB: EPUB/xhtml/page-0001.xhtml"):
                 _validate_epub_structure(epub_path)
+
+    def test_structure_validation_rejects_duplicate_zip_entries(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            epub_path = Path(tmp) / "broken.epub"
+            with ZipFile(epub_path, "w") as archive:
+                archive.writestr("mimetype", b"application/epub+zip")
+                archive.writestr("mimetype", b"application/epub+zip")
+
+            with self.assertRaisesRegex(PdfImageError, "Duplicate EPUB zip entry: mimetype"):
+                _validate_epub_structure(epub_path)
+
+    def test_structure_validation_rejects_malformed_xhtml(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            epub_path = Path(tmp) / "broken.epub"
+            with ZipFile(epub_path, "w") as archive:
+                archive.writestr("mimetype", b"application/epub+zip")
+                archive.writestr("META-INF/container.xml", b"<container/>")
+                archive.writestr("EPUB/xhtml/page-0001.xhtml", b"<html><body></html>")
+                archive.writestr(
+                    "EPUB/content.opf",
+                    """<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://www.idpf.org/2007/opf">
+  <manifest>
+    <item id="page-0001" href="xhtml/page-0001.xhtml" media-type="application/xhtml+xml"/>
+  </manifest>
+  <spine><itemref idref="page-0001"/></spine>
+</package>
+""",
+                )
+
+            with self.assertRaisesRegex(PdfImageError, "Malformed XHTML file: EPUB/xhtml/page-0001.xhtml"):
+                _validate_epub_structure(epub_path)
+
+    def test_structure_validation_rejects_missing_nav_manifest_item(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            epub_path = Path(tmp) / "broken.epub"
+            with ZipFile(epub_path, "w") as archive:
+                archive.writestr("mimetype", b"application/epub+zip")
+                archive.writestr("META-INF/container.xml", b"<container/>")
+                archive.writestr(
+                    "EPUB/content.opf",
+                    """<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://www.idpf.org/2007/opf">
+  <manifest>
+    <item id="page-0001" href="xhtml/page-0001.xhtml" media-type="application/xhtml+xml"/>
+  </manifest>
+  <spine><itemref idref="page-0001"/></spine>
+</package>
+""",
+                )
+                archive.writestr("EPUB/xhtml/page-0001.xhtml", b"<html/>")
+
+            with self.assertRaisesRegex(PdfImageError, "EPUB nav item missing"):
+                _validate_epub_structure(epub_path)
+
+    def test_structure_validation_rejects_wrong_image_media_type(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            epub_path = Path(tmp) / "broken.epub"
+            with ZipFile(epub_path, "w") as archive:
+                archive.writestr("mimetype", b"application/epub+zip")
+                archive.writestr("META-INF/container.xml", b"<container/>")
+                archive.writestr("EPUB/nav.xhtml", b"<html/>")
+                archive.writestr("EPUB/images/page-0001.png", b"PNG")
+                archive.writestr("EPUB/xhtml/page-0001.xhtml", b"<html/>")
+                archive.writestr(
+                    "EPUB/content.opf",
+                    """<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://www.idpf.org/2007/opf">
+  <manifest>
+    <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
+    <item id="img-0001" href="images/page-0001.png" media-type="image/jpeg"/>
+    <item id="page-0001" href="xhtml/page-0001.xhtml" media-type="application/xhtml+xml"/>
+  </manifest>
+  <spine><itemref idref="page-0001"/></spine>
+</package>
+""",
+                )
+
+            with self.assertRaisesRegex(PdfImageError, "Image media type mismatch for EPUB/images/page-0001.png"):
+                _validate_epub_structure(epub_path)
+
+    def test_language_propagates_to_nav_and_page_xhtml(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            epub_path = Path(tmp) / "comic.epub"
+            page = EpubPage(
+                index=1,
+                width=2,
+                height=1,
+                image_href="images/page-0001.jpg",
+                image_media_type="image/jpeg",
+                image_data=b"\xff\xd8PAGE1\xff\xd9",
+                xhtml_href="xhtml/page-0001.xhtml",
+                item_id="page-0001",
+                label="Page 1",
+            )
+
+            write_epub_from_pages([page], epub_path, source_path=Path(tmp) / "comic.pdf", title="Comic", language="ja")
+
+            with ZipFile(epub_path) as archive:
+                nav = archive.read("EPUB/nav.xhtml").decode("utf-8")
+                page_xhtml = archive.read("EPUB/xhtml/page-0001.xhtml").decode("utf-8")
+                self.assertIn('lang="ja" xml:lang="ja"', nav)
+                self.assertIn('lang="ja" xml:lang="ja"', page_xhtml)
 
 
 if __name__ == "__main__":

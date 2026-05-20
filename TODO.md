@@ -6,7 +6,7 @@ Current verified baseline:
 
 - `.venv/bin/python -m py_compile epub_layout_gui.py epub_layout_gui_support.py epub_layout_preview.py epub_layout_model.py epub_batch_model.py epub_series_model.py epub_writer.py epub_validation.py pdf_to_epub_lossless.py pdf_to_cbz_lossless.py`
 - `.venv/bin/python -m unittest`
-- Result on 2026-05-20: 164 tests passed with the project `.venv`.
+- Result on 2026-05-20: 169 tests passed with the project `.venv`.
 
 Use `.venv/bin/python` for local verification. System `python3` may not have `fitz` / PyMuPDF installed.
 
@@ -374,28 +374,28 @@ Primary files:
 
 Tasks:
 
-- [ ] Check duplicate ZIP entries.
-- [ ] Parse every generated XHTML file as XML.
-- [ ] Verify `nav.xhtml` is present and marked with `properties="nav"`.
-- [ ] Verify all image media types match filename extensions.
-- [ ] Verify every non-blank reading page has an image manifest item.
-- [ ] Verify cover image appears exactly once.
-- [ ] Verify OPF language and XHTML `lang` / `xml:lang` are consistent.
+- [x] Check duplicate ZIP entries.
+- [x] Parse every generated XHTML file as XML.
+- [x] Verify `nav.xhtml` is present and marked with `properties="nav"`.
+- [x] Verify all image media types match filename extensions.
+- [x] Verify every non-blank reading page has an image manifest item.
+- [x] Verify cover image appears exactly once.
+- [x] Verify OPF language and XHTML `lang` / `xml:lang` are consistent.
 - [ ] Optionally add `--epubcheck PATH` or `--strict-epubcheck` later.
 
 Acceptance criteria:
 
-- [ ] Invalid generated or hand-mutated EPUBs fail with actionable error messages.
-- [ ] Existing valid outputs still pass.
-- [ ] Validation remains deterministic and does not require network access.
+- [x] Invalid generated or hand-mutated EPUBs fail with actionable error messages.
+- [x] Existing valid outputs still pass.
+- [x] Validation remains deterministic and does not require network access.
 
 Tests:
 
-- [ ] Unit test duplicate ZIP entry rejection.
-- [ ] Unit test malformed XHTML rejection.
-- [ ] Unit test missing nav item rejection.
-- [ ] Unit test wrong image media type rejection.
-- [ ] Unit test language propagation into nav/page XHTML.
+- [x] Unit test duplicate ZIP entry rejection.
+- [x] Unit test malformed XHTML rejection.
+- [x] Unit test missing nav item rejection.
+- [x] Unit test wrong image media type rejection.
+- [x] Unit test language propagation into nav/page XHTML.
 
 ## P2: GUI Workflow Polish
 

@@ -76,13 +76,13 @@ def write_epub_from_pages(
                 cover_id,
             ),
         )
-        _write_deflated(archive, "EPUB/nav.xhtml", _nav_xhtml(title, reading_pages))
+        _write_deflated(archive, "EPUB/nav.xhtml", _nav_xhtml(title, reading_pages, language))
         _write_deflated(archive, "EPUB/styles/page.css", _page_css())
         for page in reading_pages:
             if page.is_blank:
-                _write_deflated(archive, f"EPUB/{page.xhtml_href}", _blank_page_xhtml(title, page))
+                _write_deflated(archive, f"EPUB/{page.xhtml_href}", _blank_page_xhtml(title, page, language))
             else:
-                _write_deflated(archive, f"EPUB/{page.xhtml_href}", _page_xhtml(title, page))
+                _write_deflated(archive, f"EPUB/{page.xhtml_href}", _page_xhtml(title, page, language))
         for page in pages:
             if not page.is_blank:
                 _write_stored(archive, f"EPUB/{page.image_href}", page.image_data)
@@ -204,15 +204,16 @@ def _spine_itemref(page: EpubPage, pair_first_two_pages: bool) -> str:
     return f'    <itemref idref="{page.item_id}"/>'
 
 
-def _nav_xhtml(title: str, pages: list[EpubPage]) -> str:
+def _nav_xhtml(title: str, pages: list[EpubPage], language: str = "zh-Hant") -> str:
     title_xml = html.escape(title, quote=True)
+    language_xml = html.escape(language or "zh-Hant", quote=True)
     links = "\n".join(
         f'        <li><a href="{page.xhtml_href}">{html.escape(page.label, quote=True)}</a></li>'
         for page in pages
     )
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html>
-<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="zh-Hant" xml:lang="zh-Hant">
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="{language_xml}" xml:lang="{language_xml}">
   <head>
     <title>{title_xml}</title>
   </head>
@@ -245,12 +246,13 @@ svg {
 """
 
 
-def _page_xhtml(title: str, page: EpubPage) -> str:
+def _page_xhtml(title: str, page: EpubPage, language: str = "zh-Hant") -> str:
     page_title = html.escape(f"{title} - Page {page.index}", quote=True)
+    language_xml = html.escape(language or "zh-Hant", quote=True)
     href = html.escape(f"../{page.image_href}", quote=True)
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html>
-<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="zh-Hant" xml:lang="zh-Hant">
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="{language_xml}" xml:lang="{language_xml}">
   <head>
     <title>{page_title}</title>
     <meta name="viewport" content="width={page.width}, height={page.height}"/>
@@ -265,11 +267,12 @@ def _page_xhtml(title: str, page: EpubPage) -> str:
 """
 
 
-def _blank_page_xhtml(title: str, page: EpubPage) -> str:
+def _blank_page_xhtml(title: str, page: EpubPage, language: str = "zh-Hant") -> str:
     page_title = html.escape(f"{title} - {page.label}", quote=True)
+    language_xml = html.escape(language or "zh-Hant", quote=True)
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html>
-<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="zh-Hant" xml:lang="zh-Hant">
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="{language_xml}" xml:lang="{language_xml}">
   <head>
     <title>{page_title}</title>
     <meta name="viewport" content="width={page.width}, height={page.height}"/>
