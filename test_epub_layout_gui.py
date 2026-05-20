@@ -537,7 +537,12 @@ class EpubLayoutGuiListTests(unittest.TestCase):
             app._build_ui()
 
         toolbar = frames[0]
-        toolbar_buttons = [button for button in buttons if button.parent is toolbar]
+        toolbar_rows = [frame for frame in frames if frame.parent is toolbar]
+
+        self.assertEqual(1, len(toolbar_rows))
+        toolbar_row = toolbar_rows[0]
+        self.assertEqual("center", toolbar_row.pack_args[-1][1].get("anchor"))
+        toolbar_buttons = [button for button in buttons if button.parent is toolbar_row]
 
         self.assertEqual(
             [
@@ -553,10 +558,13 @@ class EpubLayoutGuiListTests(unittest.TestCase):
             ],
             [button.options.get("text") for button in toolbar_buttons],
         )
-        for button in toolbar_buttons:
+        for button in toolbar_buttons[:-1]:
             pack_kwargs = button.pack_args[-1][1]
             self.assertEqual("left", pack_kwargs.get("side"))
             self.assertEqual((0, 8), pack_kwargs.get("padx"))
+        last_pack_kwargs = toolbar_buttons[-1].pack_args[-1][1]
+        self.assertEqual("left", last_pack_kwargs.get("side"))
+        self.assertEqual((0, 0), last_pack_kwargs.get("padx"))
 
     def test_single_pdf_navigation_hides_series_volumes_by_default(self):
         app = EpubLayoutApp.__new__(EpubLayoutApp)

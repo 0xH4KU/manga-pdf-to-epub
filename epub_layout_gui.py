@@ -131,6 +131,8 @@ class EpubLayoutApp:
     def _build_ui(self) -> None:
         toolbar = ttk.Frame(self.root, padding=8)
         toolbar.pack(side=tk.TOP, fill=tk.X)
+        toolbar_row = ttk.Frame(toolbar)
+        toolbar_row.pack(anchor=tk.CENTER)
         toolbar_buttons = (
             ("Import Series...", self.import_series),
             ("Open PDF", self.open_pdf),
@@ -142,8 +144,10 @@ class EpubLayoutApp:
             ("Load Preset", self.load_preset),
             ("Command Palette...", self.open_command_palette),
         )
-        for text, command in toolbar_buttons:
-            ttk.Button(toolbar, text=text, command=command).pack(side=tk.LEFT, padx=(0, 8))
+        last_index = len(toolbar_buttons) - 1
+        for index, (text, command) in enumerate(toolbar_buttons):
+            padx = (0, 0) if index == last_index else (0, 8)
+            ttk.Button(toolbar_row, text=text, command=command).pack(side=tk.LEFT, padx=padx)
 
         main = ttk.Panedwindow(self.root, orient=tk.HORIZONTAL)
         main.pack(fill=tk.BOTH, expand=True)
