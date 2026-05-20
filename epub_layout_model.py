@@ -221,7 +221,11 @@ class LayoutModel:
         self.cover_entry_id = entry.page.item_id
 
     def save_preset(self, preset_path: Path) -> None:
-        payload = {
+        payload = self.to_preset_payload()
+        preset_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+
+    def to_preset_payload(self) -> dict:
+        return {
             "version": 2,
             "source_page_count": self.source_page_count,
             "metadata": {
@@ -233,7 +237,6 @@ class LayoutModel:
             "cover": self._preset_cover_payload(),
             "entries": [self._preset_entry_payload(entry) for entry in self.entries],
         }
-        preset_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
 
     def apply_preset(self, preset_path: Path) -> None:
         payload = self.load_preset_payload(preset_path)

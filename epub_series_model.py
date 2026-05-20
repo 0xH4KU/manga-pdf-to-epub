@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -16,6 +17,7 @@ class SeriesVolume:
     output_path: Path | None = None
     warnings: list[str] = field(default_factory=list)
     error: str | None = None
+    layout_payload: dict | None = None
 
 
 @dataclass
@@ -47,6 +49,9 @@ class SeriesProject:
     def model_for_volume(self, volume: SeriesVolume) -> LayoutModel:
         if volume.layout_model is None:
             volume.layout_model = LayoutModel.from_pdf(volume.pdf_path)
+            if volume.layout_payload is not None:
+                volume.layout_model.apply_preset_payload(volume.layout_payload)
+                volume.layout_payload = None
         volume.layout_model.title = self.generated_title(volume)
         volume.layout_model.author = self.author
         volume.layout_model.language = self.language
@@ -103,6 +108,50 @@ class SeriesProject:
                 summary["failed"] += 1
         return summary
 
+    def to_payload(self, project_path: Path | None = None) -> dict:
+        return {
+            "version": 1,
+            "title": self.title,
+            "author": self.author,
+            "language": self.language,
+            "volumes": [
+                {
+                    "pdf_path": _serialize_path(volume.pdf_path, project_path),
+                    "volume_number": volume.volume_number,
+                    "status": volume.status,
+                    "output_path": _serialize_optional_path(volume.output_path, project_path),
+                    "warnings": list(volume.warnings),
+                    "error": volume.error,
+                    "layout": _layout_payload_for_volume(volume),
+                }
+                for volume in self.volumes
+            ],
+        }
+
+    @classmethod
+    def from_payload(cls, payload: dict, project_path: Path | None = None) -> "SeriesProject":
+        if payload.get("version") != 1:
+            raise ValueError("Unsupported series project version")
+        volumes = []
+        for item in payload.get("volumes", []):
+            volumes.append(
+                SeriesVolume(
+                    pdf_path=_deserialize_path(item.get("pdf_path", ""), project_path),
+                    volume_number=int(item.get("volume_number", len(volumes) + 1)),
+                    status=item.get("status") or "Unreviewed",
+                    output_path=_deserialize_optional_path(item.get("output_path"), project_path),
+                    warnings=list(item.get("warnings", [])),
+                    error=item.get("error"),
+                    layout_payload=item.get("layout"),
+                )
+            )
+        return cls(
+            payload.get("title") or "Untitled Series",
+            author=payload.get("author") or "",
+            language=payload.get("language") or "zh-Hant",
+            volumes=volumes,
+        )
+
 
 def _natural_path_key(path: Path) -> list[int | str]:
     parts: list[int | str] = []
@@ -157,3 +206,38 @@ def _safe_filename(title: str) -> str:
     cleaned = re.sub(r'[\\/:*?"<>|]+', "_", title)
     cleaned = re.sub(r"\s+", " ", cleaned).strip()
     return cleaned or "Untitled"
+
+
+def _layout_payload_for_volume(volume: SeriesVolume) -> dict | None:
+    if volume.layout_model is not None:
+        return volume.layout_model.to_preset_payload()
+    return volume.layout_payload
+
+
+def _serialize_optional_path(path: Path | None, project_path: Path | None) -> str | None:
+    if path is None:
+        return None
+    return _serialize_path(path, project_path)
+
+
+def _serialize_path(path: Path, project_path: Path | None) -> str:
+    path = Path(path)
+    if project_path is None:
+        return str(path)
+    try:
+        return os.path.relpath(path.resolve(), Path(project_path).resolve().parent)
+    except Exception:
+        return str(path)
+
+
+def _deserialize_optional_path(path_text: str | None, project_path: Path | None) -> Path | None:
+    if path_text in (None, ""):
+        return None
+    return _deserialize_path(path_text, project_path)
+
+
+def _deserialize_path(path_text: str, project_path: Path | None) -> Path:
+    path = Path(path_text)
+    if path.is_absolute() or project_path is None:
+        return Path(os.path.normpath(path))
+    return Path(os.path.normpath(Path(project_path).parent / path))

@@ -4,6 +4,7 @@ from pathlib import Path
 from zipfile import ZipFile
 
 from epub_series_model import SeriesProject
+from test_epub_layout_model import _tiny_png
 from test_pdf_to_cbz_lossless import _two_page_pdf_with_late_cover
 
 
@@ -141,6 +142,63 @@ class EpubSeriesModelTests(unittest.TestCase):
 
             with self.assertRaisesRegex(ValueError, "Invalid volume scope"):
                 project.volumes_for_scope("first")
+
+    def test_project_payload_round_trips_metadata_status_and_layouts(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project_path = Path(tmp) / "series-project.json"
+            vol01 = Path(tmp) / "Series Vol.01.pdf"
+            vol02 = Path(tmp) / "Series Vol.02.pdf"
+            inserted_cover = Path(tmp) / "covers" / "cover.png"
+            inserted_cover.parent.mkdir()
+            for path in (vol01, vol02):
+                path.write_bytes(_two_page_pdf_with_late_cover())
+            inserted_cover.write_bytes(_tiny_png())
+            project = SeriesProject.from_pdfs([vol01, vol02], title="Series", author="Author", language="ja")
+            first = project.volumes[0]
+            first.status = "Ready"
+            first.output_path = Path(tmp) / "out" / "Series Vol.01.epub"
+            first.warnings.append("reviewed manually")
+            model = project.model_for_volume(first)
+            model.insert_blank(1)
+            model.insert_image(2, inserted_cover)
+            model.set_cover_entry(model.entries[2])
+            model.exclude_cover_from_reading = True
+            project.volumes[1].status = "Edited"
+
+            payload = project.to_payload(project_path)
+            restored = SeriesProject.from_payload(payload, project_path)
+
+            self.assertEqual(1, payload["version"])
+            self.assertEqual("Series", restored.title)
+            self.assertEqual("Author", restored.author)
+            self.assertEqual("ja", restored.language)
+            self.assertEqual([vol01, vol02], [volume.pdf_path for volume in restored.volumes])
+            self.assertEqual(["Ready", "Edited"], [volume.status for volume in restored.volumes])
+            self.assertEqual(Path(tmp) / "out" / "Series Vol.01.epub", restored.volumes[0].output_path)
+            self.assertEqual(["reviewed manually"], restored.volumes[0].warnings)
+            restored_model = restored.model_for_volume(restored.volumes[0])
+            self.assertEqual(["Page 1", "Blank 1", "cover", "Page 2"], [entry.label for entry in restored_model.entries])
+            self.assertEqual("inserted-0001", restored_model.cover_entry_id)
+            self.assertTrue(restored_model.exclude_cover_from_reading)
+            self.assertEqual("Series Vol.01", restored_model.title)
+            self.assertEqual("Author", restored_model.author)
+            self.assertEqual("ja", restored_model.language)
+            self.assertEqual("Series Vol.02", restored.model_for_volume(restored.volumes[1]).title)
+
+    def test_project_payload_uses_relative_paths_when_saved_near_assets(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project_path = Path(tmp) / "projects" / "series-project.json"
+            pdf_path = Path(tmp) / "pdfs" / "Series Vol.01.pdf"
+            project_path.parent.mkdir()
+            pdf_path.parent.mkdir()
+            pdf_path.write_bytes(_two_page_pdf_with_late_cover())
+            project = SeriesProject.from_pdfs([pdf_path], title="Series")
+
+            payload = project.to_payload(project_path)
+
+            self.assertEqual("../pdfs/Series Vol.01.pdf", payload["volumes"][0]["pdf_path"])
+            restored = SeriesProject.from_payload(payload, project_path)
+            self.assertEqual(pdf_path, restored.volumes[0].pdf_path)
 
 
 if __name__ == "__main__":

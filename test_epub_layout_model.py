@@ -237,6 +237,26 @@ class EpubLayoutModelTests(unittest.TestCase):
             self.assertTrue(applied.exclude_cover_from_reading)
             self.assertEqual("inserted-0001", applied.cover_entry_id)
 
+    def test_to_preset_payload_matches_saved_version_2_preset(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            pdf_path = Path(tmp) / "comic.pdf"
+            image_path = Path(tmp) / "cover.png"
+            preset_path = Path(tmp) / "layout-v2.json"
+            pdf_path.write_bytes(_four_page_pdf())
+            image_path.write_bytes(_tiny_png())
+            model = LayoutModel.from_pdf(pdf_path)
+            model.title = "Preset Title"
+            model.author = "Preset Author"
+            model.language = "ja"
+            model.insert_blank(1)
+            model.insert_image(2, image_path)
+            model.set_cover_entry(model.entries[2])
+
+            payload = model.to_preset_payload()
+            model.save_preset(preset_path)
+
+            self.assertEqual(json.loads(preset_path.read_text(encoding="utf-8")), payload)
+
     def test_version_2_preset_missing_inserted_image_raises_clear_error(self):
         with tempfile.TemporaryDirectory() as tmp:
             pdf_path = Path(tmp) / "comic.pdf"
