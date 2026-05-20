@@ -7,8 +7,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from zipfile import ZIP_DEFLATED, ZIP_STORED, ZipFile, ZipInfo
 
-from epub_validation import validate_epub_structure
-from pdf_to_cbz_lossless import PdfImageError
+from .epub_validation import validate_epub_structure
+from .pdf_to_cbz_lossless import PdfImageError
 
 
 @dataclass(frozen=True)

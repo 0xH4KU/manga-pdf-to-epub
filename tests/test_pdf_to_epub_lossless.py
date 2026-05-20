@@ -7,8 +7,8 @@ from zipfile import ZIP_STORED, ZipFile
 from contextlib import redirect_stderr
 from unittest.mock import patch
 
-from pdf_to_cbz_lossless import PdfImageError
-from pdf_to_epub_lossless import (
+from manga_pdf_to_epub.pdf_to_cbz_lossless import PdfImageError
+from manga_pdf_to_epub.pdf_to_epub_lossless import (
     EpubPage,
     _media_type_for_ext,
     _validate_epub_structure,
@@ -16,8 +16,8 @@ from pdf_to_epub_lossless import (
     main,
     write_epub_from_pages,
 )
-from test_epub_layout_model import _four_page_pdf, _tiny_png
-from test_pdf_to_cbz_lossless import _two_page_pdf_with_late_cover
+from tests.helpers import four_page_pdf, tiny_png
+from tests.helpers import two_page_pdf_with_late_cover
 
 
 class PdfToEpubLosslessTests(unittest.TestCase):
@@ -27,7 +27,7 @@ class PdfToEpubLosslessTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             pdf_path = Path(tmp) / "comic.pdf"
             epub_path = Path(tmp) / "comic.epub"
-            pdf_path.write_bytes(_two_page_pdf_with_late_cover(cover, page2))
+            pdf_path.write_bytes(two_page_pdf_with_late_cover(cover, page2))
 
             counts = convert_pdf_to_epub(pdf_path, epub_path, title="Comic")
 
@@ -47,7 +47,7 @@ class PdfToEpubLosslessTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             pdf_path = Path(tmp) / "comic.pdf"
             epub_path = Path(tmp) / "comic.epub"
-            pdf_path.write_bytes(_two_page_pdf_with_late_cover())
+            pdf_path.write_bytes(two_page_pdf_with_late_cover())
 
             convert_pdf_to_epub(pdf_path, epub_path, title="Comic")
 
@@ -65,7 +65,7 @@ class PdfToEpubLosslessTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             pdf_path = Path(tmp) / "comic.pdf"
             epub_path = Path(tmp) / "comic.epub"
-            pdf_path.write_bytes(_two_page_pdf_with_late_cover())
+            pdf_path.write_bytes(two_page_pdf_with_late_cover())
 
             convert_pdf_to_epub(pdf_path, epub_path, title="Comic", apple_books=True)
 
@@ -81,7 +81,7 @@ class PdfToEpubLosslessTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             pdf_path = Path(tmp) / "comic.pdf"
             epub_path = Path(tmp) / "comic.epub"
-            pdf_path.write_bytes(_two_page_pdf_with_late_cover(cover, page2))
+            pdf_path.write_bytes(two_page_pdf_with_late_cover(cover, page2))
 
             counts = convert_pdf_to_epub(pdf_path, epub_path, title="Comic", blank_pages_after_cover=2)
 
@@ -105,7 +105,7 @@ class PdfToEpubLosslessTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             pdf_path = Path(tmp) / "comic.pdf"
             epub_path = Path(tmp) / "comic.epub"
-            pdf_path.write_bytes(_two_page_pdf_with_late_cover())
+            pdf_path.write_bytes(two_page_pdf_with_late_cover())
 
             counts = convert_pdf_to_epub(pdf_path, epub_path, title="Comic", blank_pages_before_cover=1)
 
@@ -120,7 +120,7 @@ class PdfToEpubLosslessTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             pdf_path = Path(tmp) / "comic.pdf"
             epub_path = Path(tmp) / "comic.epub"
-            pdf_path.write_bytes(_two_page_pdf_with_late_cover())
+            pdf_path.write_bytes(two_page_pdf_with_late_cover())
 
             convert_pdf_to_epub(pdf_path, epub_path, title="Comic", pair_first_two_pages=True)
 
@@ -133,7 +133,7 @@ class PdfToEpubLosslessTests(unittest.TestCase):
     def test_cli_rejects_conflicting_spread_modes(self):
         with tempfile.TemporaryDirectory() as tmp:
             pdf_path = Path(tmp) / "comic.pdf"
-            pdf_path.write_bytes(_two_page_pdf_with_late_cover())
+            pdf_path.write_bytes(two_page_pdf_with_late_cover())
             stderr = io.StringIO()
 
             with patch("sys.argv", ["pdf_to_epub_lossless.py", str(pdf_path), "--apple-books", "--pair-first-two-pages"]):
@@ -149,7 +149,7 @@ class PdfToEpubLosslessTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             pdf_path = Path(tmp) / "comic.pdf"
             output_dir = Path(tmp) / "out"
-            pdf_path.write_bytes(_two_page_pdf_with_late_cover())
+            pdf_path.write_bytes(two_page_pdf_with_late_cover())
 
             with patch(
                 "sys.argv",
@@ -185,7 +185,7 @@ class PdfToEpubLosslessTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             pdf_path = Path(tmp) / "comic.pdf"
             output_dir = Path(tmp) / "out"
-            pdf_path.write_bytes(_two_page_pdf_with_late_cover())
+            pdf_path.write_bytes(two_page_pdf_with_late_cover())
 
             with patch(
                 "sys.argv",
@@ -208,7 +208,7 @@ class PdfToEpubLosslessTests(unittest.TestCase):
             pdf_path = Path(tmp) / "comic.pdf"
             output_dir = Path(tmp) / "out"
             preset_path = Path(tmp) / "layout.json"
-            pdf_path.write_bytes(_two_page_pdf_with_late_cover())
+            pdf_path.write_bytes(two_page_pdf_with_late_cover())
             preset_path.write_text(
                 json.dumps(
                     {
@@ -248,7 +248,7 @@ class PdfToEpubLosslessTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             pdf_path = Path(tmp) / "comic.pdf"
             output_dir = Path(tmp) / "out"
-            pdf_path.write_bytes(_four_page_pdf())
+            pdf_path.write_bytes(four_page_pdf())
 
             with patch(
                 "sys.argv",
@@ -275,8 +275,8 @@ class PdfToEpubLosslessTests(unittest.TestCase):
             pdf_path = Path(tmp) / "comic.pdf"
             image_path = Path(tmp) / "extra.png"
             output_dir = Path(tmp) / "out"
-            pdf_path.write_bytes(_two_page_pdf_with_late_cover())
-            image_path.write_bytes(_tiny_png())
+            pdf_path.write_bytes(two_page_pdf_with_late_cover())
+            image_path.write_bytes(tiny_png())
 
             with patch(
                 "sys.argv",
@@ -293,13 +293,13 @@ class PdfToEpubLosslessTests(unittest.TestCase):
                 self.assertEqual(0, main())
 
             with ZipFile(output_dir / "comic.epub") as archive:
-                self.assertEqual(_tiny_png(), archive.read("EPUB/images/page-0002.png"))
+                self.assertEqual(tiny_png(), archive.read("EPUB/images/page-0002.png"))
 
     def test_cli_series_title_and_volume_number_generate_title(self):
         with tempfile.TemporaryDirectory() as tmp:
             pdf_path = Path(tmp) / "comic.pdf"
             output_dir = Path(tmp) / "out"
-            pdf_path.write_bytes(_two_page_pdf_with_late_cover())
+            pdf_path.write_bytes(two_page_pdf_with_late_cover())
 
             with patch(
                 "sys.argv",
@@ -325,7 +325,7 @@ class PdfToEpubLosslessTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             pdf_path = Path(tmp) / "comic.pdf"
             epub_path = Path(tmp) / "comic.epub"
-            pdf_path.write_bytes(_two_page_pdf_with_late_cover())
+            pdf_path.write_bytes(two_page_pdf_with_late_cover())
 
             convert_pdf_to_epub(
                 pdf_path,
@@ -350,7 +350,7 @@ class PdfToEpubLosslessTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             pdf_path = Path(tmp) / "comic.pdf"
             epub_path = Path(tmp) / "comic.epub"
-            pdf_path.write_bytes(_two_page_pdf_with_late_cover(cover, page2))
+            pdf_path.write_bytes(two_page_pdf_with_late_cover(cover, page2))
 
             counts = convert_pdf_to_epub(
                 pdf_path,
@@ -438,7 +438,7 @@ class PdfToEpubLosslessTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             pdf_path = Path(tmp) / "comic.pdf"
             epub_path = Path(tmp) / "comic.epub"
-            pdf_path.write_bytes(_two_page_pdf_with_late_cover())
+            pdf_path.write_bytes(two_page_pdf_with_late_cover())
             convert_pdf_to_epub(pdf_path, epub_path, title="Comic")
 
             _validate_epub_structure(epub_path)

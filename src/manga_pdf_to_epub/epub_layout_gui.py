@@ -9,17 +9,17 @@ import json
 from pathlib import Path
 from tkinter import filedialog, messagebox, simpledialog, ttk
 
-from fitz_compat import load_fitz
-from epub_layout_history import CoverState, DeleteHistory
-from epub_layout_model import LayoutEntry, LayoutModel
-from epub_layout_gui_support import (
+from .fitz_compat import load_fitz
+from .epub_layout_history import CoverState, DeleteHistory
+from .epub_layout_model import LayoutEntry, LayoutModel
+from .epub_layout_gui_support import (
     AppCommand,
     PlainTextVariable,
     VirtualBlank,
     delete_status,
     event_from_text_input,
 )
-from epub_layout_preview import (
+from .epub_layout_preview import (
     ThumbnailCache,
     normalize_preview_size,
     preview_entries,
@@ -27,7 +27,8 @@ from epub_layout_preview import (
     spread_slots,
     thumbnail_cache_key,
 )
-from epub_series_model import SeriesProject, SeriesVolume
+from .epub_layout_series_workflow import series_export_preflight
+from .epub_series_model import SeriesProject, SeriesVolume
 
 
 fitz = load_fitz()
@@ -641,10 +642,10 @@ class EpubLayoutApp:
         if not output_dir_name:
             return
         output_dir = Path(output_dir_name)
-        self.series_project.validate_ready(output_dir)
-        warning_lines = self._series_warning_lines()
+        preflight = series_export_preflight(self.series_project, output_dir)
+        warning_lines = preflight.message_lines
         if warning_lines:
-            messagebox.showwarning("Series validation warnings", "\n".join(warning_lines))
+            messagebox.showwarning("Series export preflight", "\n".join(warning_lines))
         self._open_series_export_progress()
         self._run_background(
             "Exporting ready series...",

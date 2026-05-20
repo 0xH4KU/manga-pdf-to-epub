@@ -9,27 +9,15 @@ dependencies = [
 ]
 
 [project.scripts]
-pdf-to-epub-lossless = "pdf_to_epub_lossless:main"
-pdf-to-cbz-lossless = "pdf_to_cbz_lossless:main"
-epub-layout-gui = "epub_layout_gui:main"
+pdf-to-epub-lossless = "manga_pdf_to_epub.pdf_to_epub_lossless:main"
+pdf-to-cbz-lossless = "manga_pdf_to_epub.pdf_to_cbz_lossless:main"
+epub-layout-gui = "manga_pdf_to_epub.epub_layout_gui:main"
 
 [tool.setuptools]
-py-modules = [
-  "pdf_to_cbz_lossless",
-  "pdf_to_epub_lossless",
-  "fitz_compat",
-  "epub_writer",
-  "epub_validation",
-  "epub_naming",
-  "epub_page_factory",
-  "epub_layout_history",
-  "epub_layout_model",
-  "epub_batch_model",
-  "epub_series_model",
-  "epub_layout_gui_support",
-  "epub_layout_preview",
-  "epub_layout_gui",
-]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
 
 [build-system]
 requires = ["setuptools>=69"]

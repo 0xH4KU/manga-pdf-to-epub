@@ -5,8 +5,8 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from epub_layout_model import LayoutModel
-from epub_naming import generated_volume_title, infer_volume_number, safe_filename
+from .epub_layout_model import LayoutModel
+from .epub_naming import generated_volume_title, infer_volume_number, safe_filename
 
 
 @dataclass
@@ -246,7 +246,7 @@ class SeriesProject:
                     "output_path": _serialize_optional_path(volume.output_path, project_path),
                     "warnings": list(volume.warnings),
                     "error": volume.error,
-                    "layout": _serialize_layout_payload(_layout_payload_for_volume(volume), project_path),
+                    "layout": _serialize_layout_payload(_meaningful_layout_payload_for_volume(volume), project_path),
                 }
                 for volume in self.volumes
             ],
@@ -333,6 +333,14 @@ def _layout_payload_for_volume(volume: SeriesVolume) -> dict | None:
     if volume.layout_model is not None:
         return volume.layout_model.to_preset_payload()
     return volume.layout_payload
+
+
+def _meaningful_layout_payload_for_volume(volume: SeriesVolume) -> dict | None:
+    if volume.layout_payload is not None:
+        return volume.layout_payload
+    if volume.layout_model is None or not _has_saved_layout(volume):
+        return None
+    return volume.layout_model.to_preset_payload()
 
 
 def _serialize_layout_payload(payload: dict | None, project_path: Path | None) -> dict | None:

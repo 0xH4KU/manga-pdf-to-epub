@@ -5,10 +5,10 @@ import dataclasses
 from dataclasses import dataclass
 from pathlib import Path
 
-from fitz_compat import load_fitz
-from pdf_to_cbz_lossless import ImageStream, PdfImageError, images_in_pdf_page_order
-from epub_page_factory import page_from_image
-from epub_writer import EpubPage, media_type_for_ext, write_epub_from_pages
+from .fitz_compat import load_fitz
+from .pdf_to_cbz_lossless import ImageStream, PdfImageError, images_in_pdf_page_order
+from .epub_page_factory import page_from_image
+from .epub_writer import EpubPage, media_type_for_ext, write_epub_from_pages
 
 
 fitz = load_fitz()
@@ -80,7 +80,7 @@ class LayoutModel:
         )
         self.entries.insert(index, LayoutEntry(page.label, page))
 
-    def insert_image(self, index: int, image_path: Path) -> None:
+    def insert_image(self, index: int, image_path: Path, item_id: str | None = None) -> None:
         if index < 0 or index > len(self.entries):
             raise IndexError("Image insertion index out of range")
         image_path = Path(image_path)
@@ -91,8 +91,8 @@ class LayoutModel:
             raise ValueError("Only JPEG and PNG images can be inserted")
         data = image_path.read_bytes()
         width, height = _image_dimensions(image_path)
-        item_number = self._next_external_image_number()
-        item_id = f"inserted-{item_number:04d}"
+        item_number = self._next_external_image_number(item_id)
+        item_id = item_id or f"inserted-{item_number:04d}"
         page = EpubPage(
             index=item_number,
             width=width,
@@ -204,7 +204,7 @@ class LayoutModel:
         for entry, page in zip(self.entries, self.normalized_pages()):
             if self.cover_entry_id is not None and not entry.is_blank and entry.page.item_id == self.cover_entry_id:
                 return page.item_id
-            if not entry.is_blank and entry.source_index == self.cover_source_index:
+            if self.cover_source_index is not None and not entry.is_blank and entry.source_index == self.cover_source_index:
                 return page.item_id
         return None
 
@@ -293,7 +293,7 @@ class LayoutModel:
                 image_path = Path(item.get("path", ""))
                 if not image_path.exists():
                     raise ValueError(f"Inserted image not found: {image_path}")
-                self.insert_image(len(self.entries), image_path)
+                self.insert_image(len(self.entries), image_path, item_id=item.get("entry_id"))
                 continue
             raise ValueError(f"Unsupported preset entry kind: {kind}")
 
@@ -311,8 +311,16 @@ class LayoutModel:
                 self.set_cover(int(cover["source_index"]))
             except ValueError:
                 self._ensure_valid_cover()
-        elif cover.get("kind") == "inserted" and cover.get("entry_id") is not None:
-            self.cover_entry_id = str(cover["entry_id"])
+        elif cover.get("kind") == "inserted":
+            if cover.get("entry_id") is not None:
+                self.cover_entry_id = str(cover["entry_id"])
+            else:
+                inserted_cover = next(
+                    (entry for entry in self.entries if not entry.is_blank and entry.source_index is None),
+                    None,
+                )
+                if inserted_cover is not None:
+                    self.set_cover_entry(inserted_cover)
             self._ensure_valid_cover()
         else:
             self._ensure_valid_cover()
@@ -360,11 +368,17 @@ class LayoutModel:
             if any(not entry.is_blank and entry.page.item_id == self.cover_entry_id for entry in self.entries):
                 return
             self.cover_entry_id = None
-        if any(not entry.is_blank and entry.source_index == self.cover_source_index for entry in self.entries):
+        if self.cover_source_index is not None and any(
+            not entry.is_blank and entry.source_index == self.cover_source_index for entry in self.entries
+        ):
             return
         self.cover_source_index = self._first_image_source_index()
 
-    def _next_external_image_number(self) -> int:
+    def _next_external_image_number(self, item_id: str | None = None) -> int:
+        explicit_number = _inserted_item_number(item_id)
+        if explicit_number is not None:
+            self._external_image_counter = max(self._external_image_counter, explicit_number)
+            return explicit_number
         self._external_image_counter += 1
         return self._external_image_counter
 
@@ -373,10 +387,9 @@ class LayoutModel:
         for entry in self.entries:
             if entry.source_index is not None or entry.is_blank:
                 continue
-            prefix = "inserted-"
-            item_id = entry.page.item_id
-            if item_id.startswith(prefix) and item_id[len(prefix) :].isdigit():
-                maximum = max(maximum, int(item_id[len(prefix) :]))
+            item_number = _inserted_item_number(entry.page.item_id)
+            if item_number is not None:
+                maximum = max(maximum, item_number)
         return maximum
 
     def _preset_entry_payload(self, entry: LayoutEntry) -> dict:
@@ -386,7 +399,7 @@ class LayoutModel:
             return {"kind": "source", "source_index": entry.source_index}
         if entry.inserted_path is None:
             raise ValueError(f"Inserted image entry is missing source path: {entry.label}")
-        return {"kind": "inserted", "path": str(entry.inserted_path)}
+        return {"kind": "inserted", "path": str(entry.inserted_path), "entry_id": entry.page.item_id}
 
     def _preset_cover_payload(self) -> dict:
         if self.cover_entry_id is not None:
@@ -399,6 +412,17 @@ class LayoutModel:
 def _entry_from_image(image: ImageStream, padding: int) -> LayoutEntry:
     page, _ext = page_from_image(image, padding)
     return LayoutEntry(page.label, page, source_index=image.index)
+
+
+def _inserted_item_number(item_id: str | None) -> int | None:
+    prefix = "inserted-"
+    if item_id is None or not item_id.startswith(prefix):
+        return None
+    number_text = item_id[len(prefix) :]
+    if not number_text.isdigit():
+        return None
+    return int(number_text)
+
 
 def _reference_page(entries: list[LayoutEntry], index: int) -> EpubPage:
     for candidate in entries[max(0, index - 1) :: -1]:

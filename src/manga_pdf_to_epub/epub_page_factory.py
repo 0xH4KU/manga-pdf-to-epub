@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from epub_writer import EpubPage, media_type_for_ext
-from pdf_to_cbz_lossless import ImageStream, image_to_archive_member
+from .epub_writer import EpubPage, media_type_for_ext
+from .pdf_to_cbz_lossless import ImageStream, image_to_archive_member
 
 
 def page_from_image(image: ImageStream, padding: int) -> tuple[EpubPage, str]:

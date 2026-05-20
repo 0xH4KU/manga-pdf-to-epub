@@ -3,9 +3,9 @@ import unittest
 from pathlib import Path
 from zipfile import ZipFile
 
-from epub_series_model import SeriesProject, SeriesVolume
-from test_epub_layout_model import _tiny_png
-from test_pdf_to_cbz_lossless import _two_page_pdf_with_late_cover
+from manga_pdf_to_epub.epub_series_model import SeriesProject, SeriesVolume
+from tests.helpers import four_page_pdf, tiny_png
+from tests.helpers import two_page_pdf_with_late_cover
 
 
 class EpubSeriesModelTests(unittest.TestCase):
@@ -15,7 +15,7 @@ class EpubSeriesModelTests(unittest.TestCase):
             vol02 = Path(tmp) / "晚安,布布 淺野一二O Vol.02.pdf"
             vol01 = Path(tmp) / "晚安,布布 淺野一二O Vol.01.pdf"
             for path in (vol10, vol02, vol01):
-                path.write_bytes(_two_page_pdf_with_late_cover())
+                path.write_bytes(two_page_pdf_with_late_cover())
 
             project = SeriesProject.from_pdfs(
                 [vol10, vol02, vol01],
@@ -37,7 +37,7 @@ class EpubSeriesModelTests(unittest.TestCase):
     def test_import_pdfs_infers_bracketed_series_title_and_author(self):
         with tempfile.TemporaryDirectory() as tmp:
             pdf_path = Path(tmp) / "[晚安,布布][淺野一二O] Vol.09.pdf"
-            pdf_path.write_bytes(_two_page_pdf_with_late_cover())
+            pdf_path.write_bytes(two_page_pdf_with_late_cover())
 
             project = SeriesProject.from_pdfs([pdf_path])
 
@@ -48,7 +48,7 @@ class EpubSeriesModelTests(unittest.TestCase):
     def test_import_pdfs_infers_plain_series_title_and_author_when_title_has_comma(self):
         with tempfile.TemporaryDirectory() as tmp:
             pdf_path = Path(tmp) / "晚安,布布 淺野一二O Vol.01.pdf"
-            pdf_path.write_bytes(_two_page_pdf_with_late_cover())
+            pdf_path.write_bytes(two_page_pdf_with_late_cover())
 
             project = SeriesProject.from_pdfs([pdf_path])
 
@@ -61,7 +61,7 @@ class EpubSeriesModelTests(unittest.TestCase):
             first = Path(tmp) / "Series c.pdf"
             second = Path(tmp) / "Series d.pdf"
             for path in (second, first):
-                path.write_bytes(_two_page_pdf_with_late_cover())
+                path.write_bytes(two_page_pdf_with_late_cover())
 
             project = SeriesProject.from_pdfs([second, first], title="Series")
 
@@ -72,7 +72,7 @@ class EpubSeriesModelTests(unittest.TestCase):
     def test_volume_model_uses_series_metadata_not_copied_first_volume_title(self):
         with tempfile.TemporaryDirectory() as tmp:
             pdf_path = Path(tmp) / "晚安,布布 淺野一二O Vol.01.pdf"
-            pdf_path.write_bytes(_two_page_pdf_with_late_cover())
+            pdf_path.write_bytes(two_page_pdf_with_late_cover())
             project = SeriesProject.from_pdfs([pdf_path], title="晚安,布布", author="淺野一二O", language="ja")
 
             model = project.model_for_volume(project.volumes[0])
@@ -88,7 +88,7 @@ class EpubSeriesModelTests(unittest.TestCase):
             unreviewed_pdf = Path(tmp) / "晚安,布布 淺野一二O Vol.03.pdf"
             output_dir = Path(tmp) / "out"
             for path in (ready_pdf, edited_pdf, unreviewed_pdf):
-                path.write_bytes(_two_page_pdf_with_late_cover())
+                path.write_bytes(two_page_pdf_with_late_cover())
             project = SeriesProject.from_pdfs(
                 [unreviewed_pdf, ready_pdf, edited_pdf],
                 title="晚安,布布",
@@ -114,7 +114,7 @@ class EpubSeriesModelTests(unittest.TestCase):
     def test_mark_volume_ready_updates_status(self):
         with tempfile.TemporaryDirectory() as tmp:
             pdf_path = Path(tmp) / "Series Vol.01.pdf"
-            pdf_path.write_bytes(_two_page_pdf_with_late_cover())
+            pdf_path.write_bytes(two_page_pdf_with_late_cover())
             project = SeriesProject.from_pdfs([pdf_path], title="Series")
 
             project.mark_ready(project.volumes[0])
@@ -126,7 +126,7 @@ class EpubSeriesModelTests(unittest.TestCase):
             paths = []
             for number in (1, 2, 3, 7):
                 path = Path(tmp) / f"Series Vol.{number:02d}.pdf"
-                path.write_bytes(_two_page_pdf_with_late_cover())
+                path.write_bytes(two_page_pdf_with_late_cover())
                 paths.append(path)
             project = SeriesProject.from_pdfs(paths, title="Series")
 
@@ -137,7 +137,7 @@ class EpubSeriesModelTests(unittest.TestCase):
     def test_volumes_for_scope_rejects_invalid_tokens(self):
         with tempfile.TemporaryDirectory() as tmp:
             pdf_path = Path(tmp) / "Series Vol.01.pdf"
-            pdf_path.write_bytes(_two_page_pdf_with_late_cover())
+            pdf_path.write_bytes(two_page_pdf_with_late_cover())
             project = SeriesProject.from_pdfs([pdf_path], title="Series")
 
             with self.assertRaisesRegex(ValueError, "Invalid volume scope"):
@@ -151,8 +151,8 @@ class EpubSeriesModelTests(unittest.TestCase):
             inserted_cover = Path(tmp) / "covers" / "cover.png"
             inserted_cover.parent.mkdir()
             for path in (vol01, vol02):
-                path.write_bytes(_two_page_pdf_with_late_cover())
-            inserted_cover.write_bytes(_tiny_png())
+                path.write_bytes(two_page_pdf_with_late_cover())
+            inserted_cover.write_bytes(tiny_png())
             project = SeriesProject.from_pdfs([vol01, vol02], title="Series", author="Author", language="ja")
             first = project.volumes[0]
             first.status = "Ready"
@@ -191,7 +191,7 @@ class EpubSeriesModelTests(unittest.TestCase):
             pdf_path = Path(tmp) / "pdfs" / "Series Vol.01.pdf"
             project_path.parent.mkdir()
             pdf_path.parent.mkdir()
-            pdf_path.write_bytes(_two_page_pdf_with_late_cover())
+            pdf_path.write_bytes(two_page_pdf_with_late_cover())
             project = SeriesProject.from_pdfs([pdf_path], title="Series")
 
             payload = project.to_payload(project_path)
@@ -208,8 +208,8 @@ class EpubSeriesModelTests(unittest.TestCase):
             project_path.parent.mkdir()
             pdf_path.parent.mkdir()
             cover_path.parent.mkdir()
-            pdf_path.write_bytes(_two_page_pdf_with_late_cover())
-            cover_path.write_bytes(_tiny_png())
+            pdf_path.write_bytes(two_page_pdf_with_late_cover())
+            cover_path.write_bytes(tiny_png())
             project = SeriesProject.from_pdfs([pdf_path], title="Series")
             model = project.model_for_volume(project.volumes[0])
             model.insert_image(1, cover_path)
@@ -217,7 +217,7 @@ class EpubSeriesModelTests(unittest.TestCase):
             payload = project.to_payload(project_path)
             inserted = payload["volumes"][0]["layout"]["entries"][1]
 
-            self.assertEqual({"kind": "inserted", "path": "../covers/cover.png"}, inserted)
+            self.assertEqual({"kind": "inserted", "path": "../covers/cover.png", "entry_id": "inserted-0001"}, inserted)
             restored = SeriesProject.from_payload(payload, project_path)
             restored_model = restored.model_for_volume(restored.volumes[0])
             self.assertEqual(cover_path, restored_model.entries[1].inserted_path)
@@ -228,7 +228,7 @@ class EpubSeriesModelTests(unittest.TestCase):
             vol01 = Path(tmp) / "Series Vol.01.pdf"
             vol02 = Path(tmp) / "Series Vol.02.pdf"
             for path in (vol01, vol02):
-                path.write_bytes(_two_page_pdf_with_late_cover())
+                path.write_bytes(two_page_pdf_with_late_cover())
             project = SeriesProject.from_pdfs([vol01, vol02], title="Series")
             project.active_volume_number = 2
 
@@ -243,7 +243,7 @@ class EpubSeriesModelTests(unittest.TestCase):
             project_path = Path(tmp) / "series-project.json"
             pdf_path = Path(tmp) / "Series Vol.01.pdf"
             missing_cover = Path(tmp) / "missing-cover.png"
-            pdf_path.write_bytes(_two_page_pdf_with_late_cover())
+            pdf_path.write_bytes(two_page_pdf_with_late_cover())
             payload = {
                 "version": 1,
                 "title": "Series",
@@ -277,7 +277,7 @@ class EpubSeriesModelTests(unittest.TestCase):
             existing_pdf = Path(tmp) / "Series Vol.01.pdf"
             missing_pdf = Path(tmp) / "Missing Vol.01.pdf"
             output_dir = Path(tmp) / "out"
-            existing_pdf.write_bytes(_two_page_pdf_with_late_cover())
+            existing_pdf.write_bytes(two_page_pdf_with_late_cover())
             project = SeriesProject.from_pdfs([existing_pdf], title="Series")
             duplicate = type(project.volumes[0])(
                 pdf_path=missing_pdf,
@@ -300,7 +300,7 @@ class EpubSeriesModelTests(unittest.TestCase):
             pdf_path = Path(tmp) / "Series Vol.01.pdf"
             missing_cover = Path(tmp) / "missing-cover.png"
             output_dir = Path(tmp) / "out"
-            pdf_path.write_bytes(_two_page_pdf_with_late_cover())
+            pdf_path.write_bytes(two_page_pdf_with_late_cover())
             project = SeriesProject.from_pdfs([pdf_path], title="Series")
             project.volumes[0].status = "Ready"
             project.volumes[0].layout_payload = {
@@ -325,7 +325,7 @@ class EpubSeriesModelTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             pdf_path = Path(tmp) / "Series Vol.01.pdf"
             output_dir = Path(tmp) / "out"
-            pdf_path.write_bytes(_two_page_pdf_with_late_cover())
+            pdf_path.write_bytes(two_page_pdf_with_late_cover())
             project = SeriesProject.from_pdfs([pdf_path], title="Series")
             volume = project.volumes[0]
             volume.status = "Ready"
@@ -344,8 +344,8 @@ class EpubSeriesModelTests(unittest.TestCase):
             first_pdf = Path(tmp) / "Series Vol.01.pdf"
             second_pdf = Path(tmp) / "Series Vol.02.pdf"
             output_dir = Path(tmp) / "out"
-            first_pdf.write_bytes(_two_page_pdf_with_late_cover())
-            second_pdf.write_bytes(_two_page_pdf_with_late_cover())
+            first_pdf.write_bytes(two_page_pdf_with_late_cover())
+            second_pdf.write_bytes(two_page_pdf_with_late_cover())
             project = SeriesProject.from_pdfs([first_pdf, second_pdf], title="Series")
             for volume in project.volumes:
                 volume.status = "Ready"
@@ -358,13 +358,34 @@ class EpubSeriesModelTests(unittest.TestCase):
             self.assertEqual({"ready": 2, "failed": 0, "warnings": 0}, summary)
             self.assertEqual([], project.volumes[1].warnings)
 
+    def test_opened_unedited_volume_does_not_persist_as_applied_layout(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project_path = Path(tmp) / "series-project.json"
+            first_pdf = Path(tmp) / "Series Vol.01.pdf"
+            second_pdf = Path(tmp) / "Series Vol.02.pdf"
+            output_dir = Path(tmp) / "out"
+            first_pdf.write_bytes(two_page_pdf_with_late_cover())
+            second_pdf.write_bytes(four_page_pdf())
+            project = SeriesProject.from_pdfs([first_pdf, second_pdf], title="Series")
+            for volume in project.volumes:
+                volume.status = "Ready"
+            project.model_for_volume(project.volumes[1])
+
+            payload = project.to_payload(project_path)
+            restored = SeriesProject.from_payload(payload, project_path)
+            summary = restored.validate_ready(output_dir)
+
+            self.assertIsNone(payload["volumes"][1]["layout"])
+            self.assertEqual({"ready": 2, "failed": 0, "warnings": 0}, summary)
+            self.assertEqual([], restored.volumes[1].warnings)
+
     def test_validate_ready_warns_when_applied_layout_page_count_differs_from_baseline(self):
         with tempfile.TemporaryDirectory() as tmp:
             first_pdf = Path(tmp) / "Series Vol.01.pdf"
             second_pdf = Path(tmp) / "Series Vol.02.pdf"
             output_dir = Path(tmp) / "out"
-            first_pdf.write_bytes(_two_page_pdf_with_late_cover())
-            second_pdf.write_bytes(_two_page_pdf_with_late_cover())
+            first_pdf.write_bytes(two_page_pdf_with_late_cover())
+            second_pdf.write_bytes(two_page_pdf_with_late_cover())
             project = SeriesProject.from_pdfs([first_pdf, second_pdf], title="Series")
             for volume in project.volumes:
                 volume.status = "Ready"
@@ -382,7 +403,7 @@ class EpubSeriesModelTests(unittest.TestCase):
             output_dir = Path(tmp) / "out"
             existing = output_dir / "Series Vol.01.epub"
             output_dir.mkdir()
-            pdf_path.write_bytes(_two_page_pdf_with_late_cover())
+            pdf_path.write_bytes(two_page_pdf_with_late_cover())
             existing.write_bytes(b"existing")
             project = SeriesProject(
                 "Series",
@@ -401,8 +422,8 @@ class EpubSeriesModelTests(unittest.TestCase):
             first_pdf = Path(tmp) / "Series Vol.01.pdf"
             second_pdf = Path(tmp) / "Other Vol.01.pdf"
             output_dir = Path(tmp) / "out"
-            first_pdf.write_bytes(_two_page_pdf_with_late_cover())
-            second_pdf.write_bytes(_two_page_pdf_with_late_cover())
+            first_pdf.write_bytes(two_page_pdf_with_late_cover())
+            second_pdf.write_bytes(two_page_pdf_with_late_cover())
             project = SeriesProject(
                 "Series",
                 volumes=[
@@ -422,7 +443,7 @@ class EpubSeriesModelTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             pdf_path = Path(tmp) / "Series Vol.01.pdf"
             output_dir = Path(tmp) / "out"
-            pdf_path.write_bytes(_two_page_pdf_with_late_cover())
+            pdf_path.write_bytes(two_page_pdf_with_late_cover())
             project = SeriesProject.from_pdfs([pdf_path], title="Series")
             project.volumes[0].status = "Ready"
 
@@ -437,7 +458,7 @@ class EpubSeriesModelTests(unittest.TestCase):
             ready_pdf = Path(tmp) / "Series Vol.01.pdf"
             missing_pdf = Path(tmp) / "Series Vol.02.pdf"
             output_dir = Path(tmp) / "out"
-            ready_pdf.write_bytes(_two_page_pdf_with_late_cover())
+            ready_pdf.write_bytes(two_page_pdf_with_late_cover())
             project = SeriesProject.from_pdfs([ready_pdf], title="Series")
             project.volumes[0].status = "Ready"
             project.volumes.append(
@@ -462,8 +483,8 @@ class EpubSeriesModelTests(unittest.TestCase):
             skipped_pdf = Path(tmp) / "Series Vol.02.pdf"
             missing_pdf = Path(tmp) / "Series Vol.03.pdf"
             output_dir = Path(tmp) / "out"
-            ready_pdf.write_bytes(_two_page_pdf_with_late_cover())
-            skipped_pdf.write_bytes(_two_page_pdf_with_late_cover())
+            ready_pdf.write_bytes(two_page_pdf_with_late_cover())
+            skipped_pdf.write_bytes(two_page_pdf_with_late_cover())
             project = SeriesProject.from_pdfs([ready_pdf, skipped_pdf], title="Series")
             project.volumes[0].status = "Ready"
             project.volumes[1].status = "Edited"

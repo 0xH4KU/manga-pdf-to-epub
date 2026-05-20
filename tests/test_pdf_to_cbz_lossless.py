@@ -7,7 +7,7 @@ from pathlib import Path
 from zipfile import ZIP_STORED, ZipFile
 from unittest.mock import patch
 
-from pdf_to_cbz_lossless import (
+from manga_pdf_to_epub.pdf_to_cbz_lossless import (
     ImageStream,
     PdfImageError,
     _image_from_xref,
@@ -17,87 +17,13 @@ from pdf_to_cbz_lossless import (
     images_in_pdf_page_order,
     iter_image_streams,
 )
-
-
-def _png_predict_none(rows):
-    return zlib.compress(b"".join(b"\x00" + row for row in rows))
-
-
-def _minimal_pdf(streams):
-    parts = [b"%PDF-1.6\n"]
-    offsets = []
-    for index, (dictionary, payload) in enumerate(streams, 1):
-        offsets.append(sum(map(len, parts)))
-        parts.extend(
-            [
-                f"{index} 0 obj\n".encode(),
-                dictionary.replace(b"__LEN__", str(len(payload)).encode()),
-                b"\nstream\n",
-                payload,
-                b"\nendstream\nendobj\n",
-            ]
-        )
-    xref = sum(map(len, parts))
-    parts.append(f"xref\n0 {len(streams) + 1}\n0000000000 65535 f \n".encode())
-    for offset in offsets:
-        parts.append(f"{offset:010d} 00000 n \n".encode())
-    parts.append(f"trailer << /Size {len(streams) + 1} >>\nstartxref\n{xref}\n%%EOF\n".encode())
-    return b"".join(parts)
-
-
-def _pdf_from_objects(objects):
-    parts = [b"%PDF-1.6\n"]
-    offsets = {}
-    for obj_num, body in objects:
-        offsets[obj_num] = sum(map(len, parts))
-        parts.extend([f"{obj_num} 0 obj\n".encode(), body, b"\nendobj\n"])
-    xref = sum(map(len, parts))
-    max_obj = max(offsets)
-    parts.append(f"xref\n0 {max_obj + 1}\n0000000000 65535 f \n".encode())
-    for obj_num in range(1, max_obj + 1):
-        offset = offsets.get(obj_num, 0)
-        parts.append((f"{offset:010d} 00000 n \n" if offset else "0000000000 65535 f \n").encode())
-    parts.append(f"trailer << /Root 1 0 R /Size {max_obj + 1} >>\nstartxref\n{xref}\n%%EOF\n".encode())
-    return b"".join(parts)
-
-
-def _stream_object(dictionary, payload):
-    return b"".join(
-        [
-            dictionary.replace(b"__LEN__", str(len(payload)).encode()),
-            b"\nstream\n",
-            payload,
-            b"\nendstream",
-        ]
-    )
-
-
-def _two_page_pdf_with_late_cover(cover_bytes=b"\xff\xd8COVER\xff\xd9", page2_bytes=b"\xff\xd8PAGE2\xff\xd9"):
-    draw = b"q 2 0 0 1 0 0 cm /Im0 Do Q"
-    image_template = (
-        b"<< /Type /XObject /Subtype /Image /Width 2 /Height 1 "
-        b"/BitsPerComponent 8 /ColorSpace /DeviceRGB /Filter /DCTDecode /Length __LEN__ >>"
-    )
-    return _pdf_from_objects(
-        [
-            (1, b"<< /Type /Catalog /Pages 2 0 R >>"),
-            (2, b"<< /Type /Pages /Kids [3 0 R 4 0 R] /Count 2 >>"),
-            (
-                3,
-                b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 2 1] "
-                b"/Resources << /XObject << /Im0 8 0 R >> >> /Contents 6 0 R >>",
-            ),
-            (
-                4,
-                b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 2 1] "
-                b"/Resources << /XObject << /Im0 5 0 R >> >> /Contents 7 0 R >>",
-            ),
-            (5, _stream_object(image_template, page2_bytes)),
-            (6, _stream_object(b"<< /Length __LEN__ >>", draw)),
-            (7, _stream_object(b"<< /Length __LEN__ >>", draw)),
-            (8, _stream_object(image_template, cover_bytes)),
-        ]
-    )
+from tests.helpers import (
+    minimal_pdf,
+    pdf_from_objects,
+    png_predict_none,
+    stream_object,
+    two_page_pdf_with_late_cover,
+)
 
 
 class PdfToCbzLosslessTests(unittest.TestCase):
@@ -107,7 +33,7 @@ class PdfToCbzLosslessTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             pdf_path = Path(tmp) / "comic.pdf"
             cbz_path = Path(tmp) / "comic.cbz"
-            pdf_path.write_bytes(_two_page_pdf_with_late_cover(jpeg, page2))
+            pdf_path.write_bytes(two_page_pdf_with_late_cover(jpeg, page2))
 
             counts = convert_pdf_to_cbz(pdf_path, cbz_path)
 
@@ -123,7 +49,7 @@ class PdfToCbzLosslessTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             pdf_path = Path(tmp) / "comic.pdf"
             cbz_path = Path(tmp) / "comic.cbz"
-            pdf_path.write_bytes(_two_page_pdf_with_late_cover(cover, page2))
+            pdf_path.write_bytes(two_page_pdf_with_late_cover(cover, page2))
 
             convert_pdf_to_cbz(pdf_path, cbz_path)
 
@@ -135,9 +61,9 @@ class PdfToCbzLosslessTests(unittest.TestCase):
     def test_page_order_extraction_requires_pymupdf(self):
         with tempfile.TemporaryDirectory() as tmp:
             pdf_path = Path(tmp) / "comic.pdf"
-            pdf_path.write_bytes(_two_page_pdf_with_late_cover())
+            pdf_path.write_bytes(two_page_pdf_with_late_cover())
 
-            with patch("pdf_to_cbz_lossless._load_fitz", return_value=None):
+            with patch("manga_pdf_to_epub.pdf_to_cbz_lossless._load_fitz", return_value=None):
                 with self.assertRaisesRegex(PdfImageError, "PyMuPDF is required"):
                     images_in_pdf_page_order(pdf_path)
 
@@ -186,8 +112,8 @@ class PdfToCbzLosslessTests(unittest.TestCase):
 
     def test_flate_indexed_png_predictor_image_is_wrapped_as_png(self):
         rows = [bytes([0x12]), bytes([0x34])]
-        payload = _png_predict_none(rows)
-        pdf = _minimal_pdf(
+        payload = png_predict_none(rows)
+        pdf = minimal_pdf(
             [
                 (
                     b"<< /Type /XObject /Subtype /Image /Width 2 /Height 2 "
@@ -213,8 +139,8 @@ class PdfToCbzLosslessTests(unittest.TestCase):
         self.assertEqual(b"\x00\x12\x00\x34", zlib.decompress(chunks[b"IDAT"]))
 
     def test_flate_png_predictor_reuses_original_zlib_stream_as_png_idat(self):
-        payload = _png_predict_none([bytes([0x12]), bytes([0x34])])
-        pdf = _minimal_pdf(
+        payload = png_predict_none([bytes([0x12]), bytes([0x34])])
+        pdf = minimal_pdf(
             [
                 (
                     b"<< /Type /XObject /Subtype /Image /Width 2 /Height 2 "
@@ -237,9 +163,9 @@ class PdfToCbzLosslessTests(unittest.TestCase):
 
     def test_flate_indexed_image_accepts_indirect_palette_object_from_page_order_extraction(self):
         rows = [bytes([0x12]), bytes([0x34])]
-        payload = _png_predict_none(rows)
+        payload = png_predict_none(rows)
         palette = b"\x00\x00\x00\x55\x55\x55\xaa\xaa\xaa\xff\xff\xff"
-        pdf = _pdf_from_objects(
+        pdf = pdf_from_objects(
             [
                 (1, b"<< /Type /Catalog /Pages 2 0 R >>"),
                 (2, b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
@@ -248,10 +174,10 @@ class PdfToCbzLosslessTests(unittest.TestCase):
                     b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 2 2] "
                     b"/Resources << /XObject << /Im0 5 0 R >> >> /Contents 4 0 R >>",
                 ),
-                (4, _stream_object(b"<< /Length __LEN__ >>", b"q 2 0 0 2 0 0 cm /Im0 Do Q")),
+                (4, stream_object(b"<< /Length __LEN__ >>", b"q 2 0 0 2 0 0 cm /Im0 Do Q")),
                 (
                     5,
-                    _stream_object(
+                    stream_object(
                         b"<< /Type /XObject /Subtype /Image /Width 2 /Height 2 "
                         b"/BitsPerComponent 4 /ColorSpace [/Indexed /DeviceRGB 3 6 0 R] "
                         b"/DecodeParms << /Predictor 15 /Colors 1 /Columns 2 /BitsPerComponent 4 >> "
@@ -259,7 +185,7 @@ class PdfToCbzLosslessTests(unittest.TestCase):
                         payload,
                     ),
                 ),
-                (6, _stream_object(b"<< /Length __LEN__ >>", palette)),
+                (6, stream_object(b"<< /Length __LEN__ >>", palette)),
             ]
         )
         with tempfile.TemporaryDirectory() as tmp:

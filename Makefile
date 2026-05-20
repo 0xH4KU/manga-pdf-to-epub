@@ -1,5 +1,4 @@
 PYTHON ?= .venv/bin/python
-PY_MODULES := epub_layout_gui.py epub_layout_gui_support.py epub_layout_preview.py epub_layout_history.py epub_layout_model.py epub_batch_model.py epub_series_model.py epub_writer.py epub_validation.py epub_naming.py epub_page_factory.py pdf_to_epub_lossless.py pdf_to_cbz_lossless.py fitz_compat.py
 
 .PHONY: setup test lint smoke
 
@@ -7,14 +6,16 @@ setup:
 	python3 -m venv .venv
 	$(PYTHON) -m pip install -U pip
 	$(PYTHON) -m pip install -r requirements.txt
+	$(PYTHON) -m pip install -e .
 
 test:
-	$(PYTHON) -m py_compile $(PY_MODULES)
-	$(PYTHON) -m unittest
+	PYTHONPATH=src $(PYTHON) -m unittest discover -s tests
 
 lint:
-	$(PYTHON) -m py_compile $(PY_MODULES)
+	PYTHONPATH=src $(PYTHON) -m compileall -q src tests epub_layout_gui.py pdf_to_epub_lossless.py pdf_to_cbz_lossless.py
 
 smoke:
 	$(PYTHON) pdf_to_epub_lossless.py --help >/dev/null
 	$(PYTHON) pdf_to_cbz_lossless.py --help >/dev/null
+	PYTHONPATH=src $(PYTHON) -m manga_pdf_to_epub.pdf_to_epub_lossless --help >/dev/null
+	PYTHONPATH=src $(PYTHON) -m manga_pdf_to_epub.pdf_to_cbz_lossless --help >/dev/null

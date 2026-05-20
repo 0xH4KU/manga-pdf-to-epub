@@ -91,6 +91,8 @@ For a manga series:
 
 The series workflow avoids blindly applying a single correction template to every volume. If Vol.05 needs no blank page while Vol.06 needs two blanks, each volume can keep its own layout before it is marked ready.
 
+Series export does not overwrite existing EPUB files. If the chosen output directory already contains a ready volume's target filename, the GUI warns during preflight and that volume will fail instead of replacing the file.
+
 When no deleted page is waiting to be recovered, `Cmd+Z` uses the same selected-first unready behavior as `Unready Selected`.
 
 ## Presets
@@ -191,16 +193,11 @@ For Flate-compressed PDF image streams, the tool wraps the image data into PNG. 
 
 ## Project Files
 
-- `pdf_to_epub_lossless.py` - fixed-layout EPUB exporter.
-- `pdf_to_cbz_lossless.py` - CBZ exporter and low-level PDF image extraction.
-- `epub_naming.py` - shared series title, volume number, and safe output filename rules.
-- `epub_page_factory.py` - shared conversion from extracted PDF image streams to EPUB page records.
-- `epub_layout_model.py` - editable spine model, blank pages, image insertion, metadata, presets, export glue.
-- `epub_layout_history.py` - undo history for layout deletions and cover selection restore.
-- `epub_series_model.py` - series workspace, volume status, generated titles, and ready-volume export.
-- `epub_batch_model.py` - deprecated legacy batch project queue retained for tests and migration only; use `SeriesProject` for new workflow work.
-- `epub_layout_gui.py` - Apple Books-oriented layout GUI.
-- `test_*.py` - unit tests for conversion, layout, and preview behavior.
+- `src/manga_pdf_to_epub/` - installable Python package with the converters, models, writer, validation, and GUI implementation.
+- `pdf_to_epub_lossless.py`, `pdf_to_cbz_lossless.py`, `epub_layout_gui.py` - compatibility wrappers for direct script usage from the repo root.
+- `src/manga_pdf_to_epub/epub_layout_series_workflow.py` - GUI-facing series export preflight helpers.
+- `src/manga_pdf_to_epub/epub_batch_model.py` - deprecated legacy batch project queue retained for tests and migration only; use `SeriesProject` for new workflow work.
+- `tests/` - unit tests for conversion, layout, series workflows, GUI behavior, and project guardrails.
 
 ## Test
 

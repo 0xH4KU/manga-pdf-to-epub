@@ -4,10 +4,10 @@ import json
 import warnings
 from pathlib import Path
 
-from epub_batch_model import BatchProject
-from epub_layout_model import LayoutModel
-from test_epub_layout_model import _four_page_pdf, _tiny_png
-from test_pdf_to_cbz_lossless import _two_page_pdf_with_late_cover
+from manga_pdf_to_epub.epub_batch_model import BatchProject
+from manga_pdf_to_epub.epub_layout_model import LayoutModel
+from tests.helpers import four_page_pdf, tiny_png
+from tests.helpers import two_page_pdf_with_late_cover
 
 
 class EpubBatchModelTests(unittest.TestCase):
@@ -18,8 +18,8 @@ class EpubBatchModelTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             sample_pdf = Path(tmp) / "sample.pdf"
             other_pdf = Path(tmp) / "other.pdf"
-            sample_pdf.write_bytes(_two_page_pdf_with_late_cover())
-            other_pdf.write_bytes(_two_page_pdf_with_late_cover())
+            sample_pdf.write_bytes(two_page_pdf_with_late_cover())
+            other_pdf.write_bytes(two_page_pdf_with_late_cover())
             model = LayoutModel.from_pdf(sample_pdf)
             model.insert_blank(1)
             project = BatchProject.from_template(model)
@@ -35,8 +35,8 @@ class EpubBatchModelTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             sample_pdf = Path(tmp) / "sample.pdf"
             mismatch_pdf = Path(tmp) / "mismatch.pdf"
-            sample_pdf.write_bytes(_two_page_pdf_with_late_cover())
-            mismatch_pdf.write_bytes(_four_page_pdf())
+            sample_pdf.write_bytes(two_page_pdf_with_late_cover())
+            mismatch_pdf.write_bytes(four_page_pdf())
             model = LayoutModel.from_pdf(sample_pdf)
             project = BatchProject.from_template(model)
 
@@ -52,8 +52,8 @@ class EpubBatchModelTests(unittest.TestCase):
             good_pdf = Path(tmp) / "good.pdf"
             bad_pdf = Path(tmp) / "bad.pdf"
             output_dir = Path(tmp) / "out"
-            sample_pdf.write_bytes(_two_page_pdf_with_late_cover())
-            good_pdf.write_bytes(_two_page_pdf_with_late_cover())
+            sample_pdf.write_bytes(two_page_pdf_with_late_cover())
+            good_pdf.write_bytes(two_page_pdf_with_late_cover())
             bad_pdf.write_text("not a pdf", encoding="utf-8")
             project = BatchProject.from_template(LayoutModel.from_pdf(sample_pdf))
             good = project.add_pdf(good_pdf)
@@ -71,9 +71,9 @@ class EpubBatchModelTests(unittest.TestCase):
             sample_pdf = Path(tmp) / "sample.pdf"
             target_pdf = Path(tmp) / "target.pdf"
             image_path = Path(tmp) / "cover.png"
-            sample_pdf.write_bytes(_four_page_pdf())
-            target_pdf.write_bytes(_four_page_pdf())
-            image_path.write_bytes(_tiny_png())
+            sample_pdf.write_bytes(four_page_pdf())
+            target_pdf.write_bytes(four_page_pdf())
+            image_path.write_bytes(tiny_png())
             model = LayoutModel.from_pdf(sample_pdf)
             model.title = "Template Title"
             model.author = "Template Author"
@@ -99,7 +99,7 @@ class EpubBatchModelTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             preset_path = Path(tmp) / "layout.json"
             image_path = Path(tmp) / "cover.png"
-            image_path.write_bytes(_tiny_png())
+            image_path.write_bytes(tiny_png())
             preset_path.write_text(
                 json.dumps(
                     {
@@ -137,7 +137,7 @@ class EpubBatchModelTests(unittest.TestCase):
     def test_batch_project_warns_that_legacy_workflow_is_deprecated(self):
         with tempfile.TemporaryDirectory() as tmp:
             sample_pdf = Path(tmp) / "sample.pdf"
-            sample_pdf.write_bytes(_two_page_pdf_with_late_cover())
+            sample_pdf.write_bytes(two_page_pdf_with_late_cover())
             model = LayoutModel.from_pdf(sample_pdf)
 
             with warnings.catch_warnings(record=True) as caught:
