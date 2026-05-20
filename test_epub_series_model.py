@@ -339,7 +339,26 @@ class EpubSeriesModelTests(unittest.TestCase):
             self.assertEqual("Failed", volume.status)
             self.assertEqual("Cover-only export would leave no reading pages", volume.error)
 
-    def test_validate_ready_warns_when_page_count_differs_from_first_volume(self):
+    def test_validate_ready_does_not_warn_for_unedited_volume_page_count_differences(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            first_pdf = Path(tmp) / "Series Vol.01.pdf"
+            second_pdf = Path(tmp) / "Series Vol.02.pdf"
+            output_dir = Path(tmp) / "out"
+            first_pdf.write_bytes(_two_page_pdf_with_late_cover())
+            second_pdf.write_bytes(_two_page_pdf_with_late_cover())
+            project = SeriesProject.from_pdfs([first_pdf, second_pdf], title="Series")
+            for volume in project.volumes:
+                volume.status = "Ready"
+            second_model = project.model_for_volume(project.volumes[1])
+            second_model.delete_last(1)
+            project.volumes[1].layout_model = None
+
+            summary = project.validate_ready(output_dir)
+
+            self.assertEqual({"ready": 2, "failed": 0, "warnings": 0}, summary)
+            self.assertEqual([], project.volumes[1].warnings)
+
+    def test_validate_ready_warns_when_applied_layout_page_count_differs_from_baseline(self):
         with tempfile.TemporaryDirectory() as tmp:
             first_pdf = Path(tmp) / "Series Vol.01.pdf"
             second_pdf = Path(tmp) / "Series Vol.02.pdf"
@@ -355,7 +374,27 @@ class EpubSeriesModelTests(unittest.TestCase):
             summary = project.validate_ready(output_dir)
 
             self.assertEqual({"ready": 2, "failed": 0, "warnings": 1}, summary)
-            self.assertEqual(["Page count differs from baseline: 1 != 2"], project.volumes[1].warnings)
+            self.assertEqual(["Applied layout image count differs from baseline: 1 != 2"], project.volumes[1].warnings)
+
+    def test_export_ready_refuses_to_overwrite_existing_epub(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            pdf_path = Path(tmp) / "Series Vol.01.pdf"
+            output_dir = Path(tmp) / "out"
+            existing = output_dir / "Series Vol.01.epub"
+            output_dir.mkdir()
+            pdf_path.write_bytes(_two_page_pdf_with_late_cover())
+            existing.write_bytes(b"existing")
+            project = SeriesProject(
+                "Series",
+                volumes=[SeriesVolume(pdf_path, volume_number=1, status="Ready")],
+            )
+
+            summary = project.export_ready(output_dir)
+
+            self.assertEqual({"exported": 0, "failed": 1, "skipped": 0, "warnings": 0}, summary)
+            self.assertEqual(b"existing", existing.read_bytes())
+            self.assertEqual("Failed", project.volumes[0].status)
+            self.assertIn("Refusing to overwrite existing file", project.volumes[0].error)
 
     def test_export_ready_skips_filename_collisions_without_overwriting(self):
         with tempfile.TemporaryDirectory() as tmp:

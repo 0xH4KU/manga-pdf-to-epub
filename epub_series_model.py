@@ -118,7 +118,7 @@ class SeriesProject:
                 yield _export_event(volume, "started")
                 model = self.model_for_volume(volume)
                 volume.output_path = output_dir / f"{safe_filename(self.generated_title(volume))}.epub"
-                model.export_epub(volume.output_path, overwrite=True)
+                model.export_epub(volume.output_path, overwrite=False)
                 volume.status = "Exported"
                 volume.error = None
                 summary["exported"] += 1
@@ -202,8 +202,8 @@ class SeriesProject:
             volume.status = "Failed"
             volume.error = "Cannot export an EPUB without image pages"
             return
-        if baseline_page_count is not None and image_count != baseline_page_count:
-            volume.warnings.append(f"Page count differs from baseline: {image_count} != {baseline_page_count}")
+        if _has_saved_layout(volume) and baseline_page_count is not None and image_count != baseline_page_count:
+            volume.warnings.append(f"Applied layout image count differs from baseline: {image_count} != {baseline_page_count}")
         if self._cover_only_would_remove_all_reading_pages(volume):
             volume.status = "Failed"
             volume.error = "Cover-only export would leave no reading pages"
@@ -383,6 +383,20 @@ def _missing_inserted_images(payload: dict) -> list[Path]:
 
 def _payload_image_page_count(payload: dict) -> int:
     return sum(1 for entry in payload.get("entries", []) if entry.get("kind") in {"source", "inserted"})
+
+
+def _has_saved_layout(volume: SeriesVolume) -> bool:
+    if volume.layout_payload is not None:
+        return True
+    if volume.layout_model is None:
+        return False
+    try:
+        return volume.layout_model.to_preset_payload().get("entries") != [
+            {"kind": "source", "source_index": index}
+            for index in range(1, volume.layout_model.source_page_count + 1)
+        ]
+    except Exception:
+        return True
 
 
 def _serialize_optional_path(path: Path | None, project_path: Path | None) -> str | None:
