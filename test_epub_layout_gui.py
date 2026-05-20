@@ -910,9 +910,12 @@ class EpubLayoutGuiListTests(unittest.TestCase):
         app = EpubLayoutApp.__new__(EpubLayoutApp)
         app.root = _FakeRoot()
         app.status = _FakeStatus()
-        app.refresh_series_list = lambda: None
+        app.refresh_series_list = lambda: setattr(app, "series_refresh_count", getattr(app, "series_refresh_count", 0) + 1)
         app.refresh_workspace_status = lambda: None
+        app._open_series_export_progress = lambda: setattr(app, "progress_opened", True)
+        app._finish_series_export_progress = lambda summary: setattr(app, "finished_summary", summary)
         events = [
+            {"volume_number": 1, "status": "started", "output_path": Path("/tmp/out/Series Vol.01.epub")},
             {"volume_number": 1, "status": "exported", "output_path": Path("/tmp/out/Series Vol.01.epub")},
             {"status": "summary", "exported": 1, "failed": 0, "skipped": 0, "warnings": 0},
         ]
@@ -927,14 +930,46 @@ class EpubLayoutGuiListTests(unittest.TestCase):
 
         self.assertEqual({"exported": 1, "failed": 0, "skipped": 0, "warnings": 0}, summary)
         self.assertEqual("Exported Vol.01.", app.status.value)
+        self.assertEqual(1, app.series_refresh_count)
+
+    def test_series_export_opens_and_finishes_progress_state(self):
+        app = EpubLayoutApp.__new__(EpubLayoutApp)
+        app.status = _FakeStatus()
+        app.refresh_series_list = lambda: None
+        app.refresh_workspace_status = lambda: None
+        app.root = _FakeRoot()
+        events = [{"status": "summary", "exported": 1, "failed": 0, "skipped": 0, "warnings": 0}]
+        app.series_project = SimpleNamespace(export_ready_iter=lambda output_dir: iter(events))
+        app._run_background = lambda status, work, on_success: setattr(app, "background_call", (status, work, on_success)) or True
+
+        with patch("epub_layout_gui.filedialog.askdirectory", return_value="/tmp/out"):
+            app.export_ready_series()
+
+        self.assertEqual("Exporting ready series...", app.series_export_progress["current"])
+        app.background_call[2](app.background_call[1]())
+        self.assertEqual("Close", app.series_export_progress["close_text"])
+        self.assertEqual("1 exported, 0 failed, 0 skipped, 0 warnings", app.series_export_progress["summary"])
 
     def test_series_export_progress_reports_started_volume(self):
         app = EpubLayoutApp.__new__(EpubLayoutApp)
         app.status = _FakeStatus()
+        app.series_export_progress = {}
 
         app._series_export_progress({"volume_number": 2, "status": "started"})
 
         self.assertEqual("Exporting Vol.02.", app.status.value)
+        self.assertEqual("Exporting Vol.02.", app.series_export_progress["current"])
+
+    def test_export_ready_series_busy_state_blocks_second_export(self):
+        app = EpubLayoutApp.__new__(EpubLayoutApp)
+        app.status = _FakeStatus()
+        app.series_project = SimpleNamespace(export_ready_iter=lambda output_dir: iter([]))
+        app._busy = True
+
+        with patch("epub_layout_gui.filedialog.askdirectory", return_value="/tmp/out"):
+            app.export_ready_series()
+
+        self.assertEqual("Another operation is already running.", app.status.value)
 
     def test_bind_shortcuts_registers_safe_layout_actions(self):
         app = EpubLayoutApp.__new__(EpubLayoutApp)

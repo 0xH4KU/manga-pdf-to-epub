@@ -6,7 +6,7 @@ Current verified baseline:
 
 - `.venv/bin/python -m py_compile epub_layout_gui.py epub_layout_gui_support.py epub_layout_preview.py epub_layout_model.py epub_batch_model.py epub_series_model.py epub_writer.py epub_validation.py pdf_to_epub_lossless.py pdf_to_cbz_lossless.py`
 - `.venv/bin/python -m unittest`
-- Result on 2026-05-20: 174 tests passed with the project `.venv`.
+- Result on 2026-05-20: 176 tests passed with the project `.venv`.
 
 Use `.venv/bin/python` for local verification. System `python3` may not have `fitz` / PyMuPDF installed.
 
@@ -244,10 +244,10 @@ Tasks:
 
 - [x] Add an iterator-style export API, e.g. `SeriesProject.export_ready_iter(output_dir)`.
 - [x] Yield per-volume progress events: started, exported, skipped, failed.
-- [ ] Add a small progress window with current volume, counts, and a disabled/enabled close button.
+- [x] Add a small progress window with current volume, counts, and a disabled/enabled close button.
 - [ ] Add cancel support if simple to wire safely.
 - [x] Keep `_busy` true during export and reject concurrent open/export operations.
-- [ ] Refresh series list after each finished volume.
+- [x] Refresh series list after each finished volume.
 - [x] Write the final summary to the status bar.
 
 Acceptance criteria:
@@ -262,7 +262,7 @@ Tests:
 - [x] Unit test `_run_background` is used for series export.
 - [x] Unit test progress callback receives each volume.
 - [x] Unit test failed volume updates status and error.
-- [ ] Unit test busy state blocks a second export.
+- [x] Unit test busy state blocks a second export.
 
 ## P1: CLI Parity for GUI Metadata and Presets
 
