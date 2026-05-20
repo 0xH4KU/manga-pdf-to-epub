@@ -42,7 +42,7 @@ This tool focuses on the boring-but-crucial details:
 Use Python 3.11 or newer. Tkinter is included with the standard Python.org macOS installer and most system Python builds.
 
 ```bash
-cd /Users/HAKU/github/manga-pdf-to-epub
+cd ~/manga-pdf-to-epub
 make setup
 ```
 
