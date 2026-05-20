@@ -601,9 +601,37 @@ class EpubLayoutApp:
         output_dir = Path(output_dir_name)
         self._run_background(
             "Exporting ready series...",
-            lambda: self.series_project.export_ready(output_dir),
+            lambda: self._export_ready_series_work(output_dir),
             self._series_export_done,
         )
+
+    def _export_ready_series_work(self, output_dir: Path) -> dict[str, int]:
+        summary = {"exported": 0, "failed": 0, "skipped": 0, "warnings": 0}
+        if self.series_project is None:
+            return summary
+        for event in self.series_project.export_ready_iter(output_dir):
+            if event["status"] == "summary":
+                summary = {
+                    "exported": event["exported"],
+                    "failed": event["failed"],
+                    "skipped": event["skipped"],
+                    "warnings": event["warnings"],
+                }
+                continue
+            self.root.after(0, lambda event=event: self._series_export_progress(event))
+        return summary
+
+    def _series_export_progress(self, event: dict) -> None:
+        volume_number = event.get("volume_number")
+        if volume_number is None:
+            return
+        status = event.get("status")
+        if status == "exported":
+            self.status.set(f"Exported Vol.{volume_number:02d}.")
+        elif status == "failed":
+            self.status.set(f"Failed Vol.{volume_number:02d}.")
+        elif status == "skipped":
+            self.status.set(f"Skipped Vol.{volume_number:02d}.")
 
     def _series_export_done(self, summary: dict[str, int]) -> None:
         self.refresh_series_list()

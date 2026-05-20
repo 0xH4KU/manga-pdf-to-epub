@@ -870,10 +870,11 @@ class EpubLayoutGuiListTests(unittest.TestCase):
         app.status = _FakeStatus()
         app.refresh_series_list = lambda: setattr(app, "series_refreshed", True)
         app.refresh_workspace_status = lambda: setattr(app, "workspace_refreshed", True)
+        app.root = _FakeRoot()
+        events = [{"status": "summary", "exported": 1, "failed": 0, "skipped": 2, "warnings": 3}]
         project = SimpleNamespace(
             exported_to=None,
-            export_ready=lambda output_dir: setattr(project, "exported_to", output_dir)
-            or {"exported": 1, "failed": 0, "skipped": 2, "warnings": 3},
+            export_ready_iter=lambda output_dir: setattr(project, "exported_to", output_dir) or iter(events),
         )
         app.series_project = project
         app._run_background = lambda _status, work, on_success: on_success(work()) or True
@@ -891,8 +892,10 @@ class EpubLayoutGuiListTests(unittest.TestCase):
         app.status = _FakeStatus()
         app.refresh_series_list = lambda: None
         app.refresh_workspace_status = lambda: None
+        app.root = _FakeRoot()
+        events = [{"status": "summary", "exported": 1, "failed": 0, "skipped": 0, "warnings": 0}]
         project = SimpleNamespace(
-            export_ready=lambda output_dir: {"exported": 1, "failed": 0, "skipped": 0, "warnings": 0},
+            export_ready_iter=lambda output_dir: iter(events),
         )
         app.series_project = project
         app._run_background = lambda status, work, on_success: setattr(app, "background_call", (status, work, on_success)) or True
@@ -902,6 +905,28 @@ class EpubLayoutGuiListTests(unittest.TestCase):
 
         self.assertEqual("Exporting ready series...", app.background_call[0])
         self.assertEqual({"exported": 1, "failed": 0, "skipped": 0, "warnings": 0}, app.background_call[1]())
+
+    def test_export_ready_series_background_work_consumes_progress_events(self):
+        app = EpubLayoutApp.__new__(EpubLayoutApp)
+        app.root = _FakeRoot()
+        app.status = _FakeStatus()
+        app.refresh_series_list = lambda: None
+        app.refresh_workspace_status = lambda: None
+        events = [
+            {"volume_number": 1, "status": "exported", "output_path": Path("/tmp/out/Series Vol.01.epub")},
+            {"status": "summary", "exported": 1, "failed": 0, "skipped": 0, "warnings": 0},
+        ]
+        project = SimpleNamespace(export_ready_iter=lambda output_dir: iter(events))
+        app.series_project = project
+        app._run_background = lambda status, work, on_success: setattr(app, "background_call", (status, work, on_success)) or True
+
+        with patch("epub_layout_gui.filedialog.askdirectory", return_value="/tmp/out"):
+            app.export_ready_series()
+
+        summary = app.background_call[1]()
+
+        self.assertEqual({"exported": 1, "failed": 0, "skipped": 0, "warnings": 0}, summary)
+        self.assertEqual("Exported Vol.01.", app.status.value)
 
     def test_bind_shortcuts_registers_safe_layout_actions(self):
         app = EpubLayoutApp.__new__(EpubLayoutApp)
