@@ -464,6 +464,100 @@ class EpubLayoutGuiListTests(unittest.TestCase):
         self.assertNotIn("Delete Last...", labels)
         self.assertNotIn("Delete Range...", labels)
 
+    def test_toolbar_buttons_use_even_left_to_right_spacing(self):
+        app = EpubLayoutApp.__new__(EpubLayoutApp)
+        app.root = _FakeRoot()
+        app.apple_preview = _FakeBool(True)
+        app.title_var = SimpleNamespace()
+        app.author_var = SimpleNamespace()
+        app.language_var = SimpleNamespace()
+        app.exclude_cover_var = _FakeBool(False)
+        app.inspector_tabs = {}
+        app.inspector_tab_buttons = {}
+        app.status = _FakeStatus()
+        app.workspace_status = _FakeStatus()
+        app.refresh_preview = lambda: None
+        app.refresh_workspace_status = lambda: None
+        frames = []
+        buttons = []
+
+        class FakeFrame(_FakeWidget):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                self.parent = args[0] if args else None
+                self.options = kwargs
+                frames.append(self)
+
+        class FakePanedwindow(FakeFrame):
+            pass
+
+        class FakeButton(_FakeWidget):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                self.parent = args[0] if args else None
+                self.options = kwargs
+                buttons.append(self)
+
+        class FakeLabel(FakeButton):
+            pass
+
+        class FakeCheckbutton(FakeButton):
+            pass
+
+        class FakeListbox(_FakeWidget):
+            def bind(self, *_args, **_kwargs):
+                pass
+
+            def yview(self, *_args, **_kwargs):
+                pass
+
+        class FakeCanvas(FakeListbox):
+            def create_window(self, *_args, **_kwargs):
+                return 1
+
+            def configure(self, **kwargs):
+                self.options.update(kwargs)
+
+            def itemconfigure(self, *_args, **_kwargs):
+                pass
+
+            def bbox(self, *_args, **_kwargs):
+                return (0, 0, 1, 1)
+
+        with patch("epub_layout_gui.ttk.Frame", FakeFrame), \
+            patch("epub_layout_gui.ttk.Panedwindow", FakePanedwindow), \
+            patch("epub_layout_gui.ttk.Button", FakeButton), \
+            patch("epub_layout_gui.ttk.Label", FakeLabel), \
+            patch("epub_layout_gui.ttk.Checkbutton", FakeCheckbutton), \
+            patch("epub_layout_gui.ttk.Scrollbar", FakeButton), \
+            patch("epub_layout_gui.ttk.Separator", FakeButton), \
+            patch("epub_layout_gui.ttk.Entry", FakeButton), \
+            patch("epub_layout_gui.tk.Listbox", FakeListbox), \
+            patch("epub_layout_gui.tk.Canvas", FakeCanvas):
+            app._build_ui()
+
+        toolbar = frames[0]
+        toolbar_buttons = [button for button in buttons if button.parent is toolbar]
+
+        self.assertEqual(
+            [
+                "Import Series...",
+                "Open PDF",
+                "Export EPUB",
+                "Export Ready Series...",
+                "Open Project...",
+                "Save Project...",
+                "Save Preset",
+                "Load Preset",
+                "Command Palette...",
+            ],
+            [button.options.get("text") for button in toolbar_buttons],
+        )
+        for button in toolbar_buttons:
+            pack_kwargs = button.pack_args[-1][1]
+            self.assertEqual("left", pack_kwargs.get("side"))
+            self.assertEqual((0, 8), pack_kwargs.get("padx"))
+
     def test_single_pdf_navigation_hides_series_volumes_by_default(self):
         app = EpubLayoutApp.__new__(EpubLayoutApp)
         app.root = _FakeRoot()

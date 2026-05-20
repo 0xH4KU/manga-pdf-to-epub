@@ -131,15 +131,19 @@ class EpubLayoutApp:
     def _build_ui(self) -> None:
         toolbar = ttk.Frame(self.root, padding=8)
         toolbar.pack(side=tk.TOP, fill=tk.X)
-        ttk.Button(toolbar, text="Import Series...", command=self.import_series).pack(side=tk.LEFT)
-        ttk.Button(toolbar, text="Open PDF", command=self.open_pdf).pack(side=tk.LEFT)
-        ttk.Button(toolbar, text="Export EPUB", command=self.export_epub).pack(side=tk.LEFT, padx=(8, 0))
-        ttk.Button(toolbar, text="Export Ready Series...", command=self.export_ready_series).pack(side=tk.LEFT, padx=(8, 0))
-        ttk.Button(toolbar, text="Open Project...", command=self.open_project).pack(side=tk.LEFT, padx=(8, 0))
-        ttk.Button(toolbar, text="Save Project...", command=self.save_project).pack(side=tk.LEFT, padx=(8, 0))
-        ttk.Button(toolbar, text="Save Preset", command=self.save_preset).pack(side=tk.LEFT, padx=(8, 0))
-        ttk.Button(toolbar, text="Load Preset", command=self.load_preset).pack(side=tk.LEFT, padx=(8, 0))
-        ttk.Button(toolbar, text="Command Palette...", command=self.open_command_palette).pack(side=tk.RIGHT)
+        toolbar_buttons = (
+            ("Import Series...", self.import_series),
+            ("Open PDF", self.open_pdf),
+            ("Export EPUB", self.export_epub),
+            ("Export Ready Series...", self.export_ready_series),
+            ("Open Project...", self.open_project),
+            ("Save Project...", self.save_project),
+            ("Save Preset", self.save_preset),
+            ("Load Preset", self.load_preset),
+            ("Command Palette...", self.open_command_palette),
+        )
+        for text, command in toolbar_buttons:
+            ttk.Button(toolbar, text=text, command=command).pack(side=tk.LEFT, padx=(0, 8))
 
         main = ttk.Panedwindow(self.root, orient=tk.HORIZONTAL)
         main.pack(fill=tk.BOTH, expand=True)
