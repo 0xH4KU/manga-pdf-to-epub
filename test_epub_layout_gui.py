@@ -1,4 +1,5 @@
 import unittest
+import json
 from pathlib import Path
 from unittest.mock import patch
 from types import SimpleNamespace
@@ -962,6 +963,14 @@ class EpubLayoutGuiListTests(unittest.TestCase):
         self.assertIn("Delete Last...", labels)
         self.assertIn("Delete Range...", labels)
 
+    def test_command_palette_includes_project_save_load_actions(self):
+        app = EpubLayoutApp.__new__(EpubLayoutApp)
+
+        labels = [command.label for command in app._matching_commands("project")]
+
+        self.assertIn("Save Project", labels)
+        self.assertIn("Open Project", labels)
+
     def test_command_palette_dispatches_bulk_delete_actions(self):
         app = EpubLayoutApp.__new__(EpubLayoutApp)
         app.ask_delete_range = lambda: setattr(app, "range_delete_opened", True)
@@ -1511,6 +1520,64 @@ class EpubLayoutGuiListTests(unittest.TestCase):
 
         self.assertEqual([], app.model.applied_presets)
         self.assertIsNone(app.status.value)
+
+    def test_save_project_writes_series_project_payload(self):
+        app = EpubLayoutApp.__new__(EpubLayoutApp)
+        app.status = _FakeStatus()
+        app.model = _FakeDeleteModel([_entry("Page 1")])
+        app._store_metadata_fields = lambda: setattr(app, "metadata_stored", True)
+        project = SimpleNamespace(to_payload=lambda project_path: {"version": 1, "path": str(project_path)})
+        app.series_project = project
+
+        with patch("epub_layout_gui.filedialog.asksaveasfilename", return_value="/tmp/series-project.json"):
+            app.save_project()
+
+        self.assertTrue(app.metadata_stored)
+        self.assertEqual(
+            {"version": 1, "path": "/tmp/series-project.json"},
+            json.loads(Path("/tmp/series-project.json").read_text(encoding="utf-8")),
+        )
+        self.assertEqual("Saved project: series-project.json", app.status.value)
+        Path("/tmp/series-project.json").unlink()
+
+    def test_open_project_loads_series_project_and_refreshes_workspace(self):
+        app = EpubLayoutApp.__new__(EpubLayoutApp)
+        app.series_list = _FakeListbox(selection=0)
+        app.page_list = _FakeListbox(selection=0)
+        app.series_pane = _FakeWidget()
+        app.spine_pane = _FakeWidget()
+        app.status = _FakeStatus()
+        app.deleted_entries = ["old"]
+        app.ready_status_undo = ["old"]
+        app.thumbnail_cache = {"old": object()}
+        app._load_metadata_fields = lambda: setattr(app, "metadata_loaded", True)
+        app.refresh_list = lambda: setattr(app, "list_refreshed", True)
+        app.refresh_preview = lambda: setattr(app, "preview_refreshed", True)
+        app.refresh_workspace_status = lambda: setattr(app, "workspace_refreshed", True)
+        payload_path = Path("/tmp/open-series-project.json")
+        payload_path.write_text(json.dumps({"version": 1}), encoding="utf-8")
+        volume = SimpleNamespace(pdf_path=Path("/tmp/vol01.pdf"), volume_number=1, status="Ready")
+        loaded_project = SimpleNamespace(volumes=[volume], title="Series", author="", language="zh-Hant")
+
+        with patch("epub_layout_gui.filedialog.askopenfilename", return_value=str(payload_path)), \
+            patch("epub_layout_gui.SeriesProject.from_payload", return_value=loaded_project) as from_payload:
+            app.open_project()
+
+        from_payload.assert_called_once_with({"version": 1}, payload_path)
+        self.assertIs(loaded_project, app.series_project)
+        self.assertIsNone(app.model)
+        self.assertIsNone(app.pdf_path)
+        self.assertIsNone(app.active_series_volume)
+        self.assertEqual([], app.deleted_entries)
+        self.assertEqual([], app.ready_status_undo)
+        self.assertEqual({}, app.thumbnail_cache)
+        self.assertTrue(app.metadata_loaded)
+        self.assertTrue(app.list_refreshed)
+        self.assertTrue(app.preview_refreshed)
+        self.assertTrue(app.workspace_refreshed)
+        self.assertEqual(["Ready Vol.01 vol01.pdf"], app.series_list.items)
+        self.assertEqual("Opened project: open-series-project.json", app.status.value)
+        payload_path.unlink()
 
 
 if __name__ == "__main__":

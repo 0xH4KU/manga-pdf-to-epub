@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import threading
 import tkinter as tk
+import json
 from dataclasses import dataclass
 from pathlib import Path
 from tkinter import filedialog, messagebox, simpledialog, ttk
@@ -124,6 +125,8 @@ class EpubLayoutApp:
         ttk.Button(toolbar, text="Open PDF", command=self.open_pdf).pack(side=tk.LEFT)
         ttk.Button(toolbar, text="Export EPUB", command=self.export_epub).pack(side=tk.LEFT, padx=(8, 0))
         ttk.Button(toolbar, text="Export Ready Series...", command=self.export_ready_series).pack(side=tk.LEFT, padx=(8, 0))
+        ttk.Button(toolbar, text="Open Project...", command=self.open_project).pack(side=tk.LEFT, padx=(8, 0))
+        ttk.Button(toolbar, text="Save Project...", command=self.save_project).pack(side=tk.LEFT, padx=(8, 0))
         ttk.Button(toolbar, text="Save Preset", command=self.save_preset).pack(side=tk.LEFT, padx=(8, 0))
         ttk.Button(toolbar, text="Load Preset", command=self.load_preset).pack(side=tk.LEFT, padx=(8, 0))
         ttk.Button(toolbar, text="Command Palette...", command=self.open_command_palette).pack(side=tk.RIGHT)
@@ -289,6 +292,8 @@ class EpubLayoutApp:
             AppCommand("Mark Selected Volume Ready", "mark_selected_series_volume_ready", keywords=("series",)),
             AppCommand("Unready Selected", "unready_selected", keywords=("series", "undo")),
             AppCommand("Export Ready Series", "export_ready_series", keywords=("series",)),
+            AppCommand("Save Project", "save_project", keywords=("series", "project")),
+            AppCommand("Open Project", "open_project", keywords=("series", "project")),
             AppCommand("Save Preset", "save_preset", keywords=("layout",)),
             AppCommand("Load Preset", "load_preset", keywords=("layout",)),
             AppCommand("Insert Blank Before", "insert_blank", (True,), ("page",)),
@@ -409,6 +414,56 @@ class EpubLayoutApp:
         self.refresh_series_list()
         self.status.set(f"Imported series with {len(self.series_project.volumes)} volumes.")
         self.refresh_workspace_status()
+
+    def save_project(self) -> None:
+        if self.series_project is None:
+            return
+        if self.model is not None:
+            self._store_metadata_fields()
+        filename = filedialog.asksaveasfilename(
+            title="Save Series Project",
+            defaultextension=".json",
+            initialdir=str(Path.cwd()),
+            initialfile="series-project.json",
+            filetypes=[("JSON files", "*.json"), ("All files", "*.*")],
+        )
+        if not filename:
+            return
+        project_path = Path(filename)
+        try:
+            payload = self.series_project.to_payload(project_path)
+            project_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+            self.status.set(f"Saved project: {project_path.name}")
+        except Exception as exc:
+            messagebox.showerror("Save project failed", str(exc))
+
+    def open_project(self) -> None:
+        filename = filedialog.askopenfilename(
+            title="Open Series Project",
+            filetypes=[("JSON files", "*.json"), ("All files", "*.*")],
+            initialdir=str(Path.cwd()),
+        )
+        if not filename:
+            return
+        project_path = Path(filename)
+        try:
+            payload = json.loads(project_path.read_text(encoding="utf-8"))
+            self.series_project = SeriesProject.from_payload(payload, project_path)
+            self.model = None
+            self.pdf_path = None
+            self.active_series_volume = None
+            self.deleted_entries.clear()
+            self.ready_status_undo.clear()
+            self.thumbnail_cache.clear()
+            self._sync_navigation_mode()
+            self._load_metadata_fields()
+            self.refresh_series_list()
+            self.refresh_list()
+            self.refresh_preview()
+            self.status.set(f"Opened project: {project_path.name}")
+            self.refresh_workspace_status()
+        except Exception as exc:
+            messagebox.showerror("Open project failed", str(exc))
 
     def refresh_series_list(self) -> None:
         if not hasattr(self, "series_list"):
