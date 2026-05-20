@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -34,6 +35,11 @@ class LayoutTemplate:
 
 class BatchProject:
     def __init__(self, template: LayoutTemplate):
+        warnings.warn(
+            "BatchProject is deprecated; use SeriesProject for multi-volume workflows.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self.template = template
         self.items: list[BatchItem] = []
 

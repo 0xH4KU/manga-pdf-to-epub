@@ -1,6 +1,7 @@
 import tempfile
 import unittest
 import json
+import warnings
 from pathlib import Path
 
 from epub_batch_model import BatchProject
@@ -10,6 +11,9 @@ from test_pdf_to_cbz_lossless import _two_page_pdf_with_late_cover
 
 
 class EpubBatchModelTests(unittest.TestCase):
+    def setUp(self):
+        warnings.filterwarnings("ignore", message="BatchProject is deprecated.*", category=DeprecationWarning)
+
     def test_template_validation_marks_matching_pdf_ready(self):
         with tempfile.TemporaryDirectory() as tmp:
             sample_pdf = Path(tmp) / "sample.pdf"
@@ -129,6 +133,20 @@ class EpubBatchModelTests(unittest.TestCase):
             self.assertTrue(project.template.exclude_cover_from_reading)
             self.assertEqual("inserted-0001", project.template.cover_entry_id)
             self.assertEqual(4, len(project.template.entries))
+
+    def test_batch_project_warns_that_legacy_workflow_is_deprecated(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            sample_pdf = Path(tmp) / "sample.pdf"
+            sample_pdf.write_bytes(_two_page_pdf_with_late_cover())
+            model = LayoutModel.from_pdf(sample_pdf)
+
+            with warnings.catch_warnings(record=True) as caught:
+                warnings.simplefilter("always")
+                BatchProject.from_template(model)
+
+            self.assertEqual(1, len(caught))
+            self.assertTrue(issubclass(caught[0].category, DeprecationWarning))
+            self.assertIn("SeriesProject", str(caught[0].message))
 
 
 if __name__ == "__main__":

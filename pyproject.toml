@@ -22,6 +22,7 @@ py-modules = [
   "epub_validation",
   "epub_naming",
   "epub_page_factory",
+  "epub_layout_history",
   "epub_layout_model",
   "epub_batch_model",
   "epub_series_model",

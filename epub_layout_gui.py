@@ -10,6 +10,7 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, simpledialog, ttk
 
 from fitz_compat import load_fitz
+from epub_layout_history import CoverState, DeleteHistory
 from epub_layout_model import LayoutEntry, LayoutModel
 from epub_layout_gui_support import (
     AppCommand,
@@ -44,8 +45,7 @@ class EpubLayoutApp:
         self.thumbnail_cache: ThumbnailCache = ThumbnailCache()
         self._pdf_doc = None
         self._pdf_doc_path: Path | None = None
-        self.deleted_entries: list[list[tuple[int, LayoutEntry]]] = []
-        self.deleted_cover_states: list[tuple[int | None, str | None]] = []
+        self.deleted_history: DeleteHistory[LayoutEntry] = DeleteHistory()
         self.ready_status_undo: list[list[tuple[SeriesVolume, str]]] = []
         self.status = tk.StringVar(value="Open a PDF to begin.")
         self.workspace_status = tk.StringVar(value="")
@@ -65,10 +65,7 @@ class EpubLayoutApp:
         self._bind_shortcuts()
 
     def _reset_deleted_history(self) -> None:
-        if not hasattr(self, "deleted_cover_states"):
-            self.deleted_cover_states = []
-        self.deleted_entries.clear()
-        self.deleted_cover_states.clear()
+        self._delete_history().clear()
 
     def _configure_window(self) -> None:
         self.root.title("EPUB Layout Lab")
@@ -953,11 +950,10 @@ class EpubLayoutApp:
     def recover_last_deleted(self) -> None:
         if self.model is None:
             return
-        if not self.deleted_entries:
+        if not self._delete_history():
             self.unready_selected()
             return
-        group = self.deleted_entries.pop()
-        cover_state = self._pop_deleted_cover_state()
+        group, cover_state = self._delete_history().pop()
         restored_indexes = self._restore_entries(group)
         self._restore_cover_state(cover_state)
         self._refresh_after_layout_edit(select_index=restored_indexes[0] if restored_indexes else None)
@@ -1092,32 +1088,42 @@ class EpubLayoutApp:
     def _record_deleted_group(
         self,
         deleted: list[tuple[int, LayoutEntry]],
-        cover_state: tuple[int | None, str | None] | None = None,
+        cover_state: CoverState | None = None,
     ) -> None:
-        if not hasattr(self, "deleted_cover_states"):
-            self.deleted_cover_states = []
-        self.deleted_entries.append(deleted)
-        self.deleted_cover_states.append(cover_state or self._capture_cover_state())
+        self._delete_history().push(deleted, cover_state or self._capture_cover_state())
 
-    def _pop_deleted_cover_state(self) -> tuple[int | None, str | None] | None:
-        if not hasattr(self, "deleted_cover_states") or not self.deleted_cover_states:
-            return None
-        return self.deleted_cover_states.pop()
+    def _delete_history(self) -> DeleteHistory[LayoutEntry]:
+        if not hasattr(self, "deleted_history"):
+            history = DeleteHistory()
+            for group in getattr(self, "deleted_entries", []):
+                history.push(group, None)
+            self.deleted_history = history
+        return self.deleted_history
 
-    def _capture_cover_state(self) -> tuple[int | None, str | None]:
+    @property
+    def deleted_entries(self) -> list[list[tuple[int, LayoutEntry]]]:
+        return self._delete_history().legacy_entries()
+
+    @deleted_entries.setter
+    def deleted_entries(self, groups: list[list[tuple[int, LayoutEntry]]]) -> None:
+        history = DeleteHistory()
+        for group in groups:
+            history.push(group, None)
+        self.deleted_history = history
+
+    def _capture_cover_state(self) -> CoverState:
         if self.model is None:
-            return None, None
-        return (
+            return CoverState(None, None)
+        return CoverState(
             getattr(self.model, "cover_source_index", None),
             getattr(self.model, "cover_entry_id", None),
         )
 
-    def _restore_cover_state(self, state: tuple[int | None, str | None] | None) -> None:
+    def _restore_cover_state(self, state: CoverState | None) -> None:
         if self.model is None or state is None:
             return
-        cover_source_index, cover_entry_id = state
-        self.model.cover_source_index = cover_source_index
-        self.model.cover_entry_id = cover_entry_id
+        self.model.cover_source_index = state.source_index
+        self.model.cover_entry_id = state.entry_id
 
     def _cover_entry_index(self) -> int | None:
         if self.model is None:

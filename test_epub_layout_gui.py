@@ -5,6 +5,7 @@ from unittest.mock import patch
 from types import SimpleNamespace
 
 from epub_layout_gui import EpubLayoutApp
+from epub_layout_history import CoverState, DeleteHistory
 
 
 class _FakeBool:
@@ -1574,8 +1575,8 @@ class EpubLayoutGuiListTests(unittest.TestCase):
         page_2 = _entry("Page 2")
         app.model = _FakeDeleteModel([page_1])
         app.model.cover_source_index = 1
-        app.deleted_entries = [[(1, page_2)]]
-        app.deleted_cover_states = [(2, None)]
+        app.deleted_history = DeleteHistory()
+        app.deleted_history.push([(1, page_2)], CoverState(2, None))
         app.page_list = _FakeListbox(selection=0)
         app.status = _FakeStatus()
         app.refresh_list = lambda preserve_yview=False: setattr(app, "preserved_yview", preserve_yview)

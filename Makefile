@@ -1,5 +1,5 @@
 PYTHON ?= .venv/bin/python
-PY_MODULES := epub_layout_gui.py epub_layout_gui_support.py epub_layout_preview.py epub_layout_model.py epub_batch_model.py epub_series_model.py epub_writer.py epub_validation.py epub_naming.py epub_page_factory.py pdf_to_epub_lossless.py pdf_to_cbz_lossless.py fitz_compat.py
+PY_MODULES := epub_layout_gui.py epub_layout_gui_support.py epub_layout_preview.py epub_layout_history.py epub_layout_model.py epub_batch_model.py epub_series_model.py epub_writer.py epub_validation.py epub_naming.py epub_page_factory.py pdf_to_epub_lossless.py pdf_to_cbz_lossless.py fitz_compat.py
 
 .PHONY: setup test lint smoke
 
