@@ -169,7 +169,7 @@ class EpubLayoutDiagnosisMixin:
         if command is None:
             messagebox.showerror(
                 "Spread scan unavailable",
-                "Could not find sibling manga-spread-continuity environment. Use Import Spread Candidates instead.",
+                "Could not find sibling manga-spread-continuity environment. Use Add Selected As Spread in the Diagnose window for manual review.",
             )
             return
         self._run_background(
@@ -449,7 +449,6 @@ def build_diagnosis_entry_tab(app, parent) -> None:
 def diagnosis_callbacks(app) -> DiagnosisPanelCallbacks:
     return DiagnosisPanelCallbacks(
         run_spread_diagnosis=app.run_spread_diagnosis,
-        import_spread_candidates=app.import_spread_candidates,
         mark_selected_spread_true=app.mark_selected_spread_true,
         mark_selected_spread_false=app.mark_selected_spread_false,
         add_selected_spread=app.add_selected_spread_from_diagnosis_spine,

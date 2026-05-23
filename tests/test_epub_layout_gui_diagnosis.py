@@ -67,7 +67,6 @@ class DiagnosisPanelTests(unittest.TestCase):
         self.assertEqual(
             [
                 "run_spread_diagnosis",
-                "import_spread_candidates",
                 "mark_selected_spread_true",
                 "mark_selected_spread_false",
                 "add_selected_spread",
@@ -91,7 +90,6 @@ class DiagnosisPanelTests(unittest.TestCase):
 
         callbacks = DiagnosisPanelCallbacks(
             run_spread_diagnosis=callback("scan"),
-            import_spread_candidates=callback("import_spreads"),
             mark_selected_spread_true=callback("true"),
             mark_selected_spread_false=callback("false"),
             add_selected_spread=callback("manual"),
@@ -141,6 +139,67 @@ class DiagnosisPanelTests(unittest.TestCase):
         button_by_text["Add Selected As Spread"].options["command"]()
 
         self.assertEqual(["scan", "recheck", "manual"], calls)
+
+
+class DiagnosisImportUxTests(unittest.TestCase):
+    def test_spread_scan_unavailable_points_to_manual_spine_review(self):
+        app = EpubLayoutApp.__new__(EpubLayoutApp)
+        app.model = SimpleNamespace(entries=[page(1), page(2)])
+        app.pdf_path = Path("/tmp/book.pdf")
+        app.diagnosis_session = DiagnosisSession(source_page_count=2)
+
+        with patch("manga_pdf_to_epub.epub_layout_diagnosis_controller.resolve_spread_scan_command", return_value=None), \
+            patch("manga_pdf_to_epub.epub_layout_diagnosis_controller.messagebox.showerror") as showerror:
+            app.run_spread_diagnosis()
+
+        title, message = showerror.call_args.args
+        self.assertEqual("Spread scan unavailable", title)
+        self.assertIn("Use Add Selected As Spread", message)
+        self.assertNotIn("Use Import Spread Candidates", message)
+
+    def test_primary_panel_has_no_import_spread_candidates_button(self):
+        labels = []
+        parent = object()
+
+        class FakeStringVar:
+            def __init__(self, *_args, **kwargs):
+                self.value = kwargs.get("value", "")
+
+            def set(self, value):
+                self.value = value
+
+        class FakeWidget:
+            def __init__(self, *args, **kwargs):
+                self.options = kwargs
+
+            def pack(self, *_args, **_kwargs):
+                pass
+
+        class FakeButton(FakeWidget):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                labels.append(kwargs.get("text"))
+
+        callbacks = DiagnosisPanelCallbacks(
+            run_spread_diagnosis=lambda: None,
+            mark_selected_spread_true=lambda: None,
+            mark_selected_spread_false=lambda: None,
+            add_selected_spread=lambda: None,
+            check_confirmed_spread_damage=lambda: None,
+            run_insert_point_scoring=lambda: None,
+            import_insert_scores=lambda: None,
+            insert_selected_diagnosis_blank=lambda: None,
+            recheck_diagnosis_layout=lambda: None,
+        )
+        with patch("manga_pdf_to_epub.epub_layout_diagnosis_gui.tk.StringVar", FakeStringVar), \
+            patch("manga_pdf_to_epub.epub_layout_diagnosis_gui.tk.Listbox", FakeWidget), \
+            patch("manga_pdf_to_epub.epub_layout_diagnosis_gui.ttk.Label", FakeWidget), \
+            patch("manga_pdf_to_epub.epub_layout_diagnosis_gui.ttk.Button", FakeButton), \
+            patch("manga_pdf_to_epub.epub_layout_diagnosis_gui.ttk.Separator", FakeWidget):
+            DiagnosisPanel(parent, callbacks)
+
+        self.assertNotIn("Import Spread Candidates...", labels)
+        self.assertIn("Add Selected As Spread", labels)
 
 
 class DiagnosisManualSpreadSelectionTests(unittest.TestCase):

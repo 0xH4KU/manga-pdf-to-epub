@@ -43,7 +43,6 @@ def diagnosis_summary_texts(
 @dataclass(frozen=True)
 class DiagnosisPanelCallbacks:
     run_spread_diagnosis: Callable[[], None]
-    import_spread_candidates: Callable[[], None]
     mark_selected_spread_true: Callable[[], None]
     mark_selected_spread_false: Callable[[], None]
     add_selected_spread: Callable[[], None]
@@ -70,10 +69,6 @@ class DiagnosisPanel:
         ttk.Label(parent, text="Spread Candidates").pack(anchor=tk.W)
         ttk.Label(parent, textvariable=self.summary_var).pack(anchor=tk.W, pady=(4, 0))
         ttk.Button(parent, text="Run Cross-Page Scan", command=self.callbacks.run_spread_diagnosis).pack(fill=tk.X, pady=(6, 0))
-        ttk.Button(parent, text="Import Spread Candidates...", command=self.callbacks.import_spread_candidates).pack(
-            fill=tk.X,
-            pady=(6, 0),
-        )
         self.candidate_list.pack(fill=tk.BOTH, expand=True, pady=(6, 0))
         ttk.Button(parent, text="Mark Selected True", command=self.callbacks.mark_selected_spread_true).pack(fill=tk.X, pady=(6, 0))
         ttk.Button(parent, text="Mark Selected False", command=self.callbacks.mark_selected_spread_false).pack(fill=tk.X, pady=(6, 0))
