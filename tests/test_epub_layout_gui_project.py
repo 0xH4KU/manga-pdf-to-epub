@@ -96,9 +96,13 @@ class EpubLayoutGuiProjectTests(unittest.TestCase):
         app.series_project = None
         app.page_list = FakeListbox(selection=0)
         app.status = FakeStatus()
+        app.spine_markers = {0: object()}
+        app.insert_classification = object()
+        app.diagnosis_stale = False
         app._load_metadata_fields = lambda: setattr(app, "metadata_loaded", True)
         app.refresh_list = lambda: setattr(app, "list_refreshed", True)
         app.refresh_preview = lambda: setattr(app, "preview_refreshed", True)
+        app.refresh_diagnosis_panel = lambda: setattr(app, "diagnosis_refreshed", True)
 
         with patch("manga_pdf_to_epub.epub_layout_gui.filedialog.askopenfilename", return_value="/tmp/layout.json"), \
             patch("manga_pdf_to_epub.epub_layout_gui.simpledialog.askstring") as askstring:
@@ -106,6 +110,10 @@ class EpubLayoutGuiProjectTests(unittest.TestCase):
 
         self.assertEqual([Path("/tmp/layout.json")], app.model.applied_presets)
         askstring.assert_not_called()
+        self.assertTrue(app.diagnosis_stale)
+        self.assertIsNone(app.insert_classification)
+        self.assertEqual({}, app.spine_markers)
+        self.assertTrue(app.diagnosis_refreshed)
         self.assertEqual("Loaded preset: layout.json", app.status.value)
 
     def test_load_preset_series_mode_prompts_scope_and_applies_to_matching_volumes(self):
@@ -132,11 +140,15 @@ class EpubLayoutGuiProjectTests(unittest.TestCase):
         app.series_list = FakeListbox(selection=0)
         app.page_list = FakeListbox(selection=0)
         app.status = FakeStatus()
+        app.spine_markers = {0: object()}
+        app.insert_classification = object()
+        app.diagnosis_stale = False
         app._load_metadata_fields = lambda: setattr(app, "metadata_loaded", True)
         app.refresh_list = lambda: setattr(app, "list_refreshed", True)
         app.refresh_preview = lambda: setattr(app, "preview_refreshed", True)
         app.refresh_series_list = lambda: setattr(app, "series_refreshed", True)
         app.refresh_workspace_status = lambda: setattr(app, "workspace_refreshed", True)
+        app.refresh_diagnosis_panel = lambda: setattr(app, "diagnosis_refreshed", True)
 
         with patch("manga_pdf_to_epub.epub_layout_gui.filedialog.askopenfilename", return_value="/tmp/layout.json"), \
             patch("manga_pdf_to_epub.epub_layout_gui.simpledialog.askstring", return_value="1,7"):
@@ -149,6 +161,10 @@ class EpubLayoutGuiProjectTests(unittest.TestCase):
         self.assertTrue(app.list_refreshed)
         self.assertTrue(app.preview_refreshed)
         self.assertTrue(app.series_refreshed)
+        self.assertTrue(app.diagnosis_stale)
+        self.assertIsNone(app.insert_classification)
+        self.assertEqual({}, app.spine_markers)
+        self.assertTrue(app.diagnosis_refreshed)
         self.assertEqual("Loaded preset for 2 volumes: layout.json", app.status.value)
 
     def test_load_preset_series_mode_cancels_when_scope_is_blank(self):

@@ -1135,11 +1135,8 @@ class EpubLayoutApp(EpubLayoutDiagnosisMixin):
         preserve_yview: bool = True,
         mark_edited: bool = True,
     ) -> None:
-        if mark_edited and hasattr(self, "diagnosis_stale"):
-            self.diagnosis_stale = True
-            self.insert_classification = None
-            self.spine_markers = {}
-            self.refresh_diagnosis_panel()
+        if mark_edited:
+            self._mark_diagnosis_stale()
         self.refresh_list(preserve_yview=preserve_yview)
         self.page_list.selection_clear(0, tk.END)
         if select_index is not None:
@@ -1147,6 +1144,14 @@ class EpubLayoutApp(EpubLayoutDiagnosisMixin):
         self.refresh_preview()
         if mark_edited:
             self._mark_active_volume_edited()
+
+    def _mark_diagnosis_stale(self) -> None:
+        if not hasattr(self, "diagnosis_stale"):
+            return
+        self.diagnosis_stale = True
+        self.insert_classification = None
+        self.spine_markers = {}
+        self.refresh_diagnosis_panel()
 
     def _mark_active_volume_edited(self) -> None:
         volume = getattr(self, "active_series_volume", None)
@@ -1238,6 +1243,7 @@ class EpubLayoutApp(EpubLayoutDiagnosisMixin):
         if self.model is None:
             return
         self.model.apply_preset(preset_path)
+        self._mark_diagnosis_stale()
         self._load_metadata_fields()
         self.refresh_list()
         self.page_list.selection_clear(0, tk.END)
@@ -1276,6 +1282,7 @@ class EpubLayoutApp(EpubLayoutDiagnosisMixin):
         self._restore_active_series_selection()
         self.refresh_workspace_status()
         if active_was_updated:
+            self._mark_diagnosis_stale()
             self._load_metadata_fields()
             self.refresh_list()
             self.page_list.selection_clear(0, tk.END)
