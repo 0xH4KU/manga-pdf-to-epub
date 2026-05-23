@@ -1135,6 +1135,11 @@ class EpubLayoutApp(EpubLayoutDiagnosisMixin):
         preserve_yview: bool = True,
         mark_edited: bool = True,
     ) -> None:
+        if mark_edited and hasattr(self, "diagnosis_stale"):
+            self.diagnosis_stale = True
+            self.insert_classification = None
+            self.spine_markers = {}
+            self.refresh_diagnosis_panel()
         self.refresh_list(preserve_yview=preserve_yview)
         self.page_list.selection_clear(0, tk.END)
         if select_index is not None:

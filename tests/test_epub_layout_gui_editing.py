@@ -116,6 +116,24 @@ class EpubLayoutGuiEditingTests(unittest.TestCase):
         self.assertTrue(app.series_refreshed)
         self.assertTrue(app.workspace_refreshed)
 
+    def test_layout_edit_marks_diagnosis_stale_and_clears_markers(self):
+        app = EpubLayoutApp.__new__(EpubLayoutApp)
+        app.model = FakeDeleteModel([entry("Page 1"), entry("Page 2")])
+        app.page_list = FakeListbox(selection=0)
+        app.spine_markers = {0: object()}
+        app.insert_classification = object()
+        app.diagnosis_stale = False
+        app.refresh_list = lambda preserve_yview=False: setattr(app, "preserved_yview", preserve_yview)
+        app.refresh_preview = lambda: setattr(app, "preview_refreshed", True)
+        app.refresh_diagnosis_panel = lambda: setattr(app, "diagnosis_refreshed", True)
+
+        app._refresh_after_layout_edit(select_index=1)
+
+        self.assertTrue(app.diagnosis_stale)
+        self.assertIsNone(app.insert_classification)
+        self.assertEqual({}, app.spine_markers)
+        self.assertTrue(app.diagnosis_refreshed)
+
     def test_set_selected_as_cover_marks_ready_series_volume_edited(self):
         app = EpubLayoutApp.__new__(EpubLayoutApp)
         app.model = FakeDeleteModel([entry("Page 1"), entry("Page 2")])
