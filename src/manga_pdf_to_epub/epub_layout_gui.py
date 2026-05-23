@@ -476,8 +476,8 @@ class EpubLayoutApp(EpubLayoutDiagnosisMixin):
             self._load_metadata_fields()
             self.refresh_series_list()
             self._restore_saved_active_series_selection()
-            self.refresh_list()
-            self.refresh_preview()
+            self.refresh_spine_views()
+            self.refresh_preview_views()
             self.status.set(f"Opened project: {project_path.name}")
             self.refresh_workspace_status()
         except Exception as exc:
@@ -784,13 +784,11 @@ class EpubLayoutApp(EpubLayoutDiagnosisMixin):
         self._reset_deleted_history()
         self._reset_preview_cache()
         self._load_metadata_fields()
-        self.refresh_list()
-        self.page_list.selection_clear(0, tk.END)
-        if self.model is not None and self.model.entries:
-            self.page_list.selection_set(0)
+        self.refresh_spine_views()
+        self._select_first_spine_row()
         self.status.set(f"Loaded {self.series_project.generated_title(volume)}.")
         self.refresh_workspace_status()
-        self.refresh_preview()
+        self.refresh_preview_views()
 
     def _open_pdf_done(self, model: LayoutModel) -> None:
         self.model = model
@@ -801,16 +799,16 @@ class EpubLayoutApp(EpubLayoutDiagnosisMixin):
         self._reset_deleted_history()
         self._reset_preview_cache()
         self._load_metadata_fields()
-        self.refresh_list()
-        self.page_list.selection_clear(0, tk.END)
-        if self.model.entries:
-            self.page_list.selection_set(0)
+        self.refresh_spine_views()
+        self._select_first_spine_row()
         self.status.set(f"Loaded {self.pdf_path.name}: {len(self.model.entries)} pages")
         self.refresh_workspace_status()
-        self.refresh_preview()
+        self.refresh_preview_views()
 
     def refresh_list(self, preserve_yview: bool = False) -> None:
         if self.model is None:
+            if hasattr(self, "page_list"):
+                self.page_list.delete(0, tk.END)
             self.refresh_workspace_status()
             return
         yview_start = self.page_list.yview()[0] if preserve_yview else None

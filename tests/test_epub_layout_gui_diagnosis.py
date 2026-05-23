@@ -355,10 +355,10 @@ class DiagnosisGuiIntegrationTests(unittest.TestCase):
         app._reset_deleted_history = lambda: None
         app._reset_preview_cache = lambda: None
         app._load_metadata_fields = lambda: None
-        app.refresh_list = lambda: None
+        app.refresh_list = lambda preserve_yview=False: None
         app.refresh_workspace_status = lambda: None
         app.refresh_preview = lambda: None
-        app.page_list = SimpleNamespace(selection_clear=lambda *_args: None, selection_set=lambda *_args: None)
+        app.page_list = FakeListbox(selection=None)
         app.status = SimpleNamespace(set=lambda value: setattr(app, "status_value", value))
         app.pdf_path = Path("/tmp/book.pdf")
         app.diagnosis_session = None
@@ -372,6 +372,36 @@ class DiagnosisGuiIntegrationTests(unittest.TestCase):
         self.assertEqual([], app.spread_damage)
         self.assertIsNone(app.insert_classification)
         self.assertFalse(app.diagnosis_stale)
+
+    def test_new_pdf_refreshes_open_diagnose_window_from_new_model(self):
+        app = EpubLayoutApp.__new__(EpubLayoutApp)
+        app.model = None
+        app.series_project = "old"
+        app.active_series_volume = "old"
+        app._sync_navigation_mode = lambda: None
+        app._reset_deleted_history = lambda: None
+        app._reset_preview_cache = lambda: None
+        app._load_metadata_fields = lambda: None
+        app.refresh_workspace_status = lambda: None
+        app.refresh_preview = lambda: setattr(app, "main_preview_refreshed", True)
+        app.refresh_diagnosis_preview = lambda: setattr(app, "diagnosis_preview_refreshed", True)
+        app.page_list = FakeListbox(selection=None)
+        app.status = SimpleNamespace(set=lambda value: setattr(app, "status_value", value))
+        app.pdf_path = Path("/tmp/book.pdf")
+        app.diagnosis_window = SimpleNamespace(
+            spine_list=FakeListbox(selection=None),
+            preview=FakeCanvas(),
+            photo_refs=[],
+        )
+        app.diagnosis_window.spine_list.items = ["old row"]
+        app._is_cover_entry = lambda _entry: False
+
+        app._open_pdf_done(SimpleNamespace(entries=[page(1), page(2)], source_page_count=2))
+
+        self.assertEqual(["0001 [page] Page 1", "0002 [page] Page 2"], app.diagnosis_window.spine_list.items)
+        self.assertEqual(0, app.diagnosis_window.spine_list.selection)
+        self.assertTrue(app.main_preview_refreshed)
+        self.assertTrue(app.diagnosis_preview_refreshed)
 
 
 class DiagnosisSpineViewTests(unittest.TestCase):

@@ -83,8 +83,8 @@ class EpubLayoutGuiSeriesTests(unittest.TestCase):
         app.deleted_entries = []
         app.thumbnail_cache = {}
         app._load_metadata_fields = lambda: setattr(app, "metadata_loaded", True)
-        app.refresh_list = lambda: setattr(app, "list_refreshed", True)
-        app.refresh_preview = lambda: setattr(app, "preview_refreshed", True)
+        app.refresh_spine_views = lambda: setattr(app, "list_refreshed", True)
+        app.refresh_preview_views = lambda: setattr(app, "preview_refreshed", True)
         app.refresh_workspace_status = lambda: None
 
         app.select_series_volume()
@@ -122,8 +122,8 @@ class EpubLayoutGuiSeriesTests(unittest.TestCase):
         app.diagnosis_stale = True
         app.diagnosis_panel = None
         app._load_metadata_fields = lambda: None
-        app.refresh_list = lambda: None
-        app.refresh_preview = lambda: None
+        app.refresh_spine_views = lambda: None
+        app.refresh_preview_views = lambda: None
         app.refresh_workspace_status = lambda: None
 
         app.select_series_volume()

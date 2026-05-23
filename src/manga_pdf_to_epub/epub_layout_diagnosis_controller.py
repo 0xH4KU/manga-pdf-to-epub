@@ -45,9 +45,10 @@ class EpubLayoutDiagnosisMixin:
         window = getattr(self, "diagnosis_window", None)
         if window is None or getattr(window, "spine_list", None) is None:
             return
-        if getattr(self, "model", None) is None:
-            return
         listbox = window.spine_list
+        if getattr(self, "model", None) is None:
+            listbox.delete(0, tk.END)
+            return
         selected = _listbox_selection(listbox)
         yview_start = listbox.yview()[0] if preserve_yview else None
         listbox.delete(0, tk.END)
@@ -113,6 +114,12 @@ class EpubLayoutDiagnosisMixin:
         window.spine_list.selection_clear(0, tk.END)
         if selected is not None:
             window.spine_list.selection_set(selected)
+
+    def _select_first_spine_row(self) -> None:
+        self.page_list.selection_clear(0, tk.END)
+        if getattr(self, "model", None) is not None and self.model.entries:
+            self.page_list.selection_set(0)
+        self._set_diagnosis_selection(self.selected_index())
 
     def _diagnose_window_closed(self, closed_window=None) -> None:
         window = closed_window if closed_window is not None else getattr(self, "diagnosis_window", None)

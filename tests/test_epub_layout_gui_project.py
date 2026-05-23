@@ -228,8 +228,8 @@ class EpubLayoutGuiProjectTests(unittest.TestCase):
         app.ready_status_undo = ["old"]
         app.thumbnail_cache = {"old": object()}
         app._load_metadata_fields = lambda: setattr(app, "metadata_loaded", True)
-        app.refresh_list = lambda: setattr(app, "list_refreshed", True)
-        app.refresh_preview = lambda: setattr(app, "preview_refreshed", True)
+        app.refresh_spine_views = lambda: setattr(app, "list_refreshed", True)
+        app.refresh_preview_views = lambda: setattr(app, "preview_refreshed", True)
         app.refresh_workspace_status = lambda: setattr(app, "workspace_refreshed", True)
         payload_path = Path("/tmp/open-series-project.json")
         payload_path.write_text(json.dumps({"version": 1}), encoding="utf-8")
@@ -256,6 +256,39 @@ class EpubLayoutGuiProjectTests(unittest.TestCase):
         self.assertEqual("Opened project: open-series-project.json", app.status.value)
         payload_path.unlink()
 
+    def test_open_project_refreshes_diagnose_views_for_empty_active_model(self):
+        app = EpubLayoutApp.__new__(EpubLayoutApp)
+        app.series_list = FakeListbox(selection=0)
+        app.page_list = FakeListbox(selection=0)
+        app.page_list.items = ["old main row"]
+        app.diagnosis_window = SimpleNamespace(spine_list=FakeListbox(selection=0))
+        app.diagnosis_window.spine_list.items = ["old diagnose row"]
+        app.series_pane = FakeWidget()
+        app.spine_pane = FakeWidget()
+        app.status = FakeStatus()
+        app.deleted_entries = []
+        app.ready_status_undo = []
+        app.thumbnail_cache = {}
+        app._load_metadata_fields = lambda: None
+        app.refresh_series_list = lambda: None
+        app._restore_saved_active_series_selection = lambda: None
+        app.refresh_preview_views = lambda: setattr(app, "preview_views_refreshed", True)
+        app.refresh_workspace_status = lambda: None
+        payload_path = Path("/tmp/open-series-project-empty-active.json")
+        payload_path.write_text(json.dumps({"version": 1}), encoding="utf-8")
+        loaded_project = SimpleNamespace(volumes=[], title="Series", author="", language="zh-Hant")
+
+        with patch("manga_pdf_to_epub.epub_layout_gui.filedialog.askopenfilename", return_value=str(payload_path)), \
+            patch("manga_pdf_to_epub.epub_layout_gui.SeriesProject.from_payload", return_value=loaded_project), \
+            patch("manga_pdf_to_epub.epub_layout_gui.messagebox.showerror") as showerror:
+            app.open_project()
+
+        showerror.assert_not_called()
+        self.assertEqual([], app.page_list.items)
+        self.assertEqual([], app.diagnosis_window.spine_list.items)
+        self.assertTrue(app.preview_views_refreshed)
+        payload_path.unlink()
+
     def test_open_project_restores_active_series_selection_when_saved_volume_exists(self):
         app = EpubLayoutApp.__new__(EpubLayoutApp)
         app.series_list = FakeListbox(selection=0)
@@ -267,7 +300,8 @@ class EpubLayoutGuiProjectTests(unittest.TestCase):
         app.ready_status_undo = []
         app.thumbnail_cache = {}
         app._load_metadata_fields = lambda: None
-        app.refresh_preview = lambda: None
+        app.refresh_spine_views = lambda: None
+        app.refresh_preview_views = lambda: None
         app.refresh_workspace_status = lambda: None
         payload_path = Path("/tmp/open-active-series-project.json")
         payload_path.write_text(json.dumps({"version": 1}), encoding="utf-8")
@@ -284,6 +318,38 @@ class EpubLayoutGuiProjectTests(unittest.TestCase):
         self.assertIs(volumes[1], app.active_series_volume)
         self.assertEqual(1, app.series_list.selection)
         payload_path.unlink()
+
+    def test_load_series_volume_refreshes_open_diagnose_window_from_volume_model(self):
+        app = EpubLayoutApp.__new__(EpubLayoutApp)
+        volume = SimpleNamespace(pdf_path=Path("/tmp/vol02.pdf"), volume_number=2)
+        model = FakeDeleteModel([entry("Page 1"), entry("Page 2")])
+        app.series_project = SimpleNamespace(
+            model_for_volume=lambda selected: model if selected is volume else None,
+            generated_title=lambda selected: f"Series Vol.{selected.volume_number:02d}",
+        )
+        app.page_list = FakeListbox(selection=None)
+        app.diagnosis_window = SimpleNamespace(
+            spine_list=FakeListbox(selection=None),
+            preview=SimpleNamespace(delete=lambda *_args: None, winfo_width=lambda: 400, winfo_height=lambda: 300),
+            photo_refs=[],
+        )
+        app.diagnosis_window.spine_list.items = ["old row"]
+        app._reset_deleted_history = lambda: None
+        app._reset_preview_cache = lambda: None
+        app._load_metadata_fields = lambda: None
+        app.refresh_workspace_status = lambda: None
+        app.refresh_preview = lambda: setattr(app, "main_preview_refreshed", True)
+        app.refresh_diagnosis_preview = lambda: setattr(app, "diagnosis_preview_refreshed", True)
+        app._is_cover_entry = lambda _entry: False
+        app.apple_preview = FakeBool(False)
+        app.status = FakeStatus()
+
+        app._load_series_volume(volume)
+
+        self.assertEqual(["0001 [page] Page 1", "0002 [page] Page 2"], app.diagnosis_window.spine_list.items)
+        self.assertEqual(0, app.diagnosis_window.spine_list.selection)
+        self.assertTrue(app.main_preview_refreshed)
+        self.assertTrue(app.diagnosis_preview_refreshed)
 
     def test_validate_series_updates_warnings_and_status(self):
         app = EpubLayoutApp.__new__(EpubLayoutApp)
