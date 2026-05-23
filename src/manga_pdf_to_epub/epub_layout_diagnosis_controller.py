@@ -377,7 +377,6 @@ class EpubLayoutDiagnosisMixin:
             self._reject_selected_spread()
             return
         self._add_missing_spread_pair(first_source, second_source)
-        self.refresh_diagnosis_spine(preserve_yview=True)
 
     def _reject_selected_spread(self) -> None:
         self.status.set("Select exactly two adjacent real pages.")

@@ -100,8 +100,8 @@ class EpubLayoutGuiProjectTests(unittest.TestCase):
         app.insert_classification = object()
         app.diagnosis_stale = False
         app._load_metadata_fields = lambda: setattr(app, "metadata_loaded", True)
-        app.refresh_list = lambda: setattr(app, "list_refreshed", True)
-        app.refresh_preview = lambda: setattr(app, "preview_refreshed", True)
+        app.refresh_spine_views = lambda: setattr(app, "list_refreshed", True)
+        app.refresh_preview_views = lambda: setattr(app, "preview_refreshed", True)
         app.refresh_diagnosis_panel = lambda: setattr(app, "diagnosis_refreshed", True)
 
         with patch("manga_pdf_to_epub.epub_layout_gui.filedialog.askopenfilename", return_value="/tmp/layout.json"), \
@@ -144,8 +144,8 @@ class EpubLayoutGuiProjectTests(unittest.TestCase):
         app.insert_classification = object()
         app.diagnosis_stale = False
         app._load_metadata_fields = lambda: setattr(app, "metadata_loaded", True)
-        app.refresh_list = lambda: setattr(app, "list_refreshed", True)
-        app.refresh_preview = lambda: setattr(app, "preview_refreshed", True)
+        app.refresh_spine_views = lambda: setattr(app, "list_refreshed", True)
+        app.refresh_preview_views = lambda: setattr(app, "preview_refreshed", True)
         app.refresh_series_list = lambda: setattr(app, "series_refreshed", True)
         app.refresh_workspace_status = lambda: setattr(app, "workspace_refreshed", True)
         app.refresh_diagnosis_panel = lambda: setattr(app, "diagnosis_refreshed", True)

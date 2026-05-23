@@ -1026,7 +1026,7 @@ class EpubLayoutApp(EpubLayoutDiagnosisMixin):
             return
         try:
             self.model.set_cover_entry(entry)
-            self.refresh_list(preserve_yview=True)
+            self.refresh_spine_views(preserve_yview=True)
             self.status.set(f"Set {entry.label} as cover.")
             self._mark_active_volume_edited()
         except Exception as exc:
@@ -1238,11 +1238,11 @@ class EpubLayoutApp(EpubLayoutDiagnosisMixin):
         self.model.apply_preset(preset_path)
         self._mark_diagnosis_stale()
         self._load_metadata_fields()
-        self.refresh_list()
+        self.refresh_spine_views()
         self.page_list.selection_clear(0, tk.END)
         if self.model.entries:
             self.page_list.selection_set(0)
-        self.refresh_preview()
+        self.refresh_preview_views()
         self.status.set(f"Loaded preset: {preset_path.name}")
 
     def _load_preset_for_series(self, preset_path: Path) -> None:
@@ -1277,11 +1277,11 @@ class EpubLayoutApp(EpubLayoutDiagnosisMixin):
         if active_was_updated:
             self._mark_diagnosis_stale()
             self._load_metadata_fields()
-            self.refresh_list()
+            self.refresh_spine_views()
             self.page_list.selection_clear(0, tk.END)
             if self.model is not None and self.model.entries:
                 self.page_list.selection_set(0)
-            self.refresh_preview()
+            self.refresh_preview_views()
         self.status.set(f"Loaded preset for {len(target_volumes)} volumes: {preset_path.name}")
 
     def _load_metadata_fields(self) -> None:

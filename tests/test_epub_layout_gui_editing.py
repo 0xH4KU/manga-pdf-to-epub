@@ -143,7 +143,7 @@ class EpubLayoutGuiEditingTests(unittest.TestCase):
         app.series_list = FakeListbox(selection=0)
         app.page_list = FakeListbox(selection=1)
         app.status = FakeStatus()
-        app.refresh_list = lambda preserve_yview=False: setattr(app, "preserved_yview", preserve_yview)
+        app.refresh_spine_views = lambda preserve_yview=False: setattr(app, "preserved_yview", preserve_yview)
         app.refresh_series_list = lambda: setattr(app, "series_refreshed", True)
         app.refresh_workspace_status = lambda: setattr(app, "workspace_refreshed", True)
 
@@ -284,7 +284,7 @@ class EpubLayoutGuiEditingTests(unittest.TestCase):
         app.model = FakeDeleteModel([entry("Page 1"), entry("Page 2")])
         app.page_list = FakeListbox(selection=1)
         app.status = FakeStatus()
-        app.refresh_list = lambda preserve_yview=False: setattr(app, "preserved_yview", preserve_yview)
+        app.refresh_spine_views = lambda preserve_yview=False: setattr(app, "preserved_yview", preserve_yview)
 
         app.set_selected_as_cover()
 
