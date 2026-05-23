@@ -52,6 +52,23 @@ class DiagnosisCsvTests(unittest.TestCase):
         self.assertEqual(["034-035"], [item.gap_id for item in reviewable])
         self.assertEqual(("dark pause page", "visual discontinuity"), reviewable[0].reasons)
 
+    def test_insert_candidate_gap_id_is_derived_from_pages(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "gaps.csv"
+            path.write_text(
+                "\n".join(
+                    [
+                        "gap,after_page,before_page,safe_insert_score,label,visual_difference,continuity_risk,reasons",
+                        "999-1000,34,35,0.940000,C scene_change,0.700000,0.200000,dark pause page",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            candidates = read_insert_candidates_csv(path)
+
+        self.assertEqual("034-035", candidates[0].gap_id)
+
     def test_missing_required_csv_columns_raise_clear_error(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "bad.csv"

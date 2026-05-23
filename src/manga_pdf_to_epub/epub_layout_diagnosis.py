@@ -89,12 +89,14 @@ def read_insert_candidates_csv(path: Path) -> list[InsertCandidate]:
     rows = _read_dict_rows(path, INSERT_GAP_REQUIRED_COLUMNS)
     candidates: list[InsertCandidate] = []
     for row in rows:
+        after_page = int(row["after_page"])
+        before_page = int(row["before_page"])
         reasons = tuple(part.strip() for part in row["reasons"].split(";") if part.strip())
         candidates.append(
             InsertCandidate(
-                row["gap"],
-                int(row["after_page"]),
-                int(row["before_page"]),
+                adjacent_pair_id(after_page, before_page),
+                after_page,
+                before_page,
                 float(row["safe_insert_score"]),
                 row["label"],
                 float(row["visual_difference"]),
