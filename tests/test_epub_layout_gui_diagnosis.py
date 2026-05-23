@@ -23,7 +23,7 @@ from manga_pdf_to_epub.epub_layout_diagnosis_gui import (
     DiagnosisWindow,
     diagnosis_summary_texts,
 )
-from tests.gui_helpers import FakeDeleteModel, FakeListbox
+from tests.gui_helpers import FakeCanvas, FakeDeleteModel, FakeListbox
 
 
 def page(source_index: int):
@@ -245,6 +245,32 @@ class DiagnosisSpineViewTests(unittest.TestCase):
         app.diagnosis_window = None
 
         app.refresh_diagnosis_spine()
+
+        self.assertIsNone(app.diagnosis_window)
+
+
+class DiagnosisPreviewTests(unittest.TestCase):
+    def test_refresh_diagnosis_preview_draws_selected_spread(self):
+        app = EpubLayoutApp.__new__(EpubLayoutApp)
+        app.model = SimpleNamespace(entries=[page(1), page(2), page(3)])
+        app.apple_preview = SimpleNamespace(get=lambda: False)
+        app.diagnosis_window = SimpleNamespace(
+            spine_list=FakeListbox(selection=1),
+            preview=FakeCanvas(),
+            photo_refs=[],
+        )
+        app.draws = []
+        app._draw_entry_on_canvas = lambda canvas, photo_refs, entry, x, y, width, height: app.draws.append(entry.label)
+
+        app.refresh_diagnosis_preview()
+
+        self.assertEqual(["Page 1", "Page 2"], app.draws)
+
+    def test_refresh_diagnosis_preview_noops_when_window_closed(self):
+        app = EpubLayoutApp.__new__(EpubLayoutApp)
+        app.diagnosis_window = None
+
+        app.refresh_diagnosis_preview()
 
         self.assertIsNone(app.diagnosis_window)
 

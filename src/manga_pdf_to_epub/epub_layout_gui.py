@@ -1362,11 +1362,13 @@ class EpubLayoutApp(EpubLayoutDiagnosisMixin):
         messagebox.showerror("Export failed", str(exc))
 
     def refresh_preview(self) -> None:
-        self.preview.delete("all")
-        self.photo_refs.clear()
+        self._refresh_preview_canvas(self.preview, self.photo_refs, self.selected_index())
+
+    def _refresh_preview_canvas(self, canvas, photo_refs: list, selected: int | None) -> None:
+        canvas.delete("all")
+        photo_refs.clear()
         if self.model is None or not self.model.entries:
             return
-        selected = self.selected_index()
         if selected is None:
             selected = 0
         preview_entries = self._preview_entries()
@@ -1374,15 +1376,15 @@ class EpubLayoutApp(EpubLayoutDiagnosisMixin):
         pair_start = preview_selected if preview_selected % 2 == 0 else preview_selected - 1
         entries = preview_entries[pair_start : pair_start + 2]
 
-        width = max(400, self.preview.winfo_width())
-        height = max(300, self.preview.winfo_height())
+        width = max(400, canvas.winfo_width())
+        height = max(300, canvas.winfo_height())
         gap = 12
         page_w = (width - gap * 3) // 2
         page_h = height - gap * 2
 
         slots = self._spread_slots(pair_start, gap, page_w)
         for entry, (x, y) in zip(entries, slots):
-            self._draw_entry(entry, x, y, page_w, page_h)
+            self._draw_entry_on_canvas(canvas, photo_refs, entry, x, y, page_w, page_h)
 
     def _preview_index_for_selection(self, selected: int) -> int:
         return preview_index_for_selection(selected, self._uses_apple_cover_gap())
@@ -1400,24 +1402,27 @@ class EpubLayoutApp(EpubLayoutDiagnosisMixin):
             return False
         return self.apple_preview.get()
 
-    def _draw_entry(self, entry, x: int, y: int, max_w: int, max_h: int) -> None:
-        self.preview.create_rectangle(x, y, x + max_w, y + max_h, fill="#ffffff", outline="#707070")
+    def _draw_entry_on_canvas(self, canvas, photo_refs: list, entry, x: int, y: int, max_w: int, max_h: int) -> None:
+        canvas.create_rectangle(x, y, x + max_w, y + max_h, fill="#ffffff", outline="#707070")
         if entry.is_blank:
             fill = "#a0a0a0" if isinstance(entry, VirtualBlank) else "#606060"
-            self.preview.create_text(x + max_w // 2, y + max_h // 2, text=entry.label, fill=fill)
+            canvas.create_text(x + max_w // 2, y + max_h // 2, text=entry.label, fill=fill)
             return
         if getattr(entry, "source_index", None) is None:
             photo = self._thumbnail_for_entry(entry, max_w, max_h)
         else:
             photo = self._thumbnail_for_page(entry.page.index, max_w, max_h)
         if photo is None:
-            self.preview.create_text(x + max_w // 2, y + max_h // 2, text=entry.label, fill="#202020")
+            canvas.create_text(x + max_w // 2, y + max_h // 2, text=entry.label, fill="#202020")
             return
-        self.photo_refs.append(photo)
+        photo_refs.append(photo)
         image_x = x + (max_w - photo.width()) // 2
         image_y = y + (max_h - photo.height()) // 2
-        self.preview.create_image(image_x, image_y, anchor=tk.NW, image=photo)
-        self.preview.create_text(x + 8, y + 16, text=entry.label, anchor=tk.W, fill="#ffffff")
+        canvas.create_image(image_x, image_y, anchor=tk.NW, image=photo)
+        canvas.create_text(x + 8, y + 16, text=entry.label, anchor=tk.W, fill="#ffffff")
+
+    def _draw_entry(self, entry, x: int, y: int, max_w: int, max_h: int) -> None:
+        self._draw_entry_on_canvas(self.preview, self.photo_refs, entry, x, y, max_w, max_h)
 
     def _thumbnail_for_page(self, page_index: int, max_w: int, max_h: int) -> tk.PhotoImage | None:
         if self.pdf_path is None:

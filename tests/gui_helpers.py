@@ -228,5 +228,5 @@ def app_for_preview(entries, selected):
     app.apple_preview = FakeBool(True)
     app.selected_index = lambda: selected
     app.draws = []
-    app._draw_entry = lambda entry, x, y, width, height: app.draws.append((entry.label, x))
+    app._draw_entry_on_canvas = lambda canvas, photo_refs, entry, x, y, width, height: app.draws.append((entry.label, x))
     return app

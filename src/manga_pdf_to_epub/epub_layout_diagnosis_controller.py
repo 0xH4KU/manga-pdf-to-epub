@@ -27,7 +27,11 @@ class EpubLayoutDiagnosisMixin:
         refresh_diagnosis_panel(self)
 
     def refresh_diagnosis_preview(self) -> None:
-        return
+        window = getattr(self, "diagnosis_window", None)
+        if window is None or getattr(window, "preview", None) is None:
+            return
+        selected = _first_selection(window.spine_list)
+        self._refresh_preview_canvas(window.preview, window.photo_refs, selected)
 
     def refresh_diagnosis_spine(self, preserve_yview: bool = False) -> None:
         window = getattr(self, "diagnosis_window", None)
