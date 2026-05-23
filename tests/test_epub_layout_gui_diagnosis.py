@@ -212,6 +212,18 @@ class DiagnosisManualSpreadSelectionTests(unittest.TestCase):
         self.assertEqual([], app.diagnosis_session.confirmed_spreads())
         self.assertEqual("Select exactly two adjacent real pages.", app.status_value)
 
+    def test_add_selected_spread_rejects_without_model(self):
+        app = EpubLayoutApp.__new__(EpubLayoutApp)
+        app.model = None
+        app.diagnosis_session = DiagnosisSession(source_page_count=2)
+        app.diagnosis_window = SimpleNamespace(spine_list=FakeListbox(selection=(0, 1)))
+        app.status = SimpleNamespace(set=lambda value: setattr(app, "status_value", value))
+
+        app.add_selected_spread_from_diagnosis_spine()
+
+        self.assertEqual([], app.diagnosis_session.confirmed_spreads())
+        self.assertEqual("Select exactly two adjacent real pages.", app.status_value)
+
     def test_add_selected_spread_rejects_non_adjacent_source_pages(self):
         app = EpubLayoutApp.__new__(EpubLayoutApp)
         app.model = SimpleNamespace(entries=[page(1), page(3)])
