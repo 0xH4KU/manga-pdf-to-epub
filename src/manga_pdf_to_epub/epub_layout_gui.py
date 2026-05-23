@@ -775,6 +775,7 @@ class EpubLayoutApp(EpubLayoutDiagnosisMixin):
     def _load_series_volume(self, volume: SeriesVolume) -> None:
         self.pdf_path = volume.pdf_path
         self.model = self.series_project.model_for_volume(volume) if self.series_project is not None else None
+        reset_diagnosis_for_model(self, self.model)
         self.active_series_volume = volume
         self._reset_deleted_history()
         self._reset_preview_cache()
