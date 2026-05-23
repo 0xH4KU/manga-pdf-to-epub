@@ -1,3 +1,4 @@
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -7,6 +8,7 @@ from manga_pdf_to_epub.epub_layout_diagnosis_runner import (
     default_diagnosis_output_dir,
     resolve_insert_score_command,
     resolve_spread_scan_command,
+    run_diagnosis_command,
 )
 
 
@@ -63,10 +65,33 @@ class DiagnosisRunnerTests(unittest.TestCase):
 
         self.assertIsInstance(command, DiagnosisCommand)
         self.assertEqual(insert_root, command.cwd)
-        self.assertEqual(str(package_dir / "cli.py"), command.argv[1])
+        self.assertEqual("-m", command.argv[1])
+        self.assertIn("manga_insert_point_scorer.cli", command.argv)
         self.assertIn(str(Path("/books/book.pdf")), command.argv)
         self.assertIn("--output", command.argv)
         self.assertIn(str(output_dir), command.argv)
+        self.assertIsNotNone(command.env)
+        self.assertEqual(str(insert_root / "src"), command.env["PYTHONPATH"])
+
+    def test_run_diagnosis_command_passes_environment_overrides(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            script_path = tmp_path / "print_env.py"
+            script_path.write_text(
+                "import os\nprint(os.environ.get('DIAG_TEST_ENV'))\n",
+                encoding="utf-8",
+            )
+
+            result = run_diagnosis_command(
+                DiagnosisCommand(
+                    (sys.executable, str(script_path)),
+                    cwd=tmp_path,
+                    output_dir=tmp_path / "out",
+                    env={"DIAG_TEST_ENV": "ok"},
+                )
+            )
+
+        self.assertIn("ok", result.stdout)
 
 
 if __name__ == "__main__":

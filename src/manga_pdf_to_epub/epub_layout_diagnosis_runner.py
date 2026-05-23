@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -10,6 +11,7 @@ class DiagnosisCommand:
     argv: tuple[str, ...]
     cwd: Path
     output_dir: Path
+    env: dict[str, str] | None = None
 
 
 @dataclass(frozen=True)
@@ -57,21 +59,25 @@ def resolve_insert_score_command(project_root: Path, pdf_path: Path, output_dir:
     return DiagnosisCommand(
         (
             str(python_path),
-            str(package_cli),
+            "-m",
+            "manga_insert_point_scorer.cli",
             str(pdf_path),
             "--output",
             str(output_dir),
         ),
         insert_root,
         Path(output_dir),
+        {"PYTHONPATH": str(insert_root / "src")},
     )
 
 
 def run_diagnosis_command(command: DiagnosisCommand) -> DiagnosisRunResult:
     command.output_dir.mkdir(parents=True, exist_ok=True)
+    env = os.environ | (command.env or {})
     completed = subprocess.run(
         command.argv,
         cwd=command.cwd,
+        env=env,
         check=True,
         text=True,
         capture_output=True,
