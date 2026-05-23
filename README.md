@@ -36,8 +36,8 @@ This tool focuses on the boring-but-crucial details:
 - Page deletion with recover support.
 - Preset save/load for applying layout corrections to one volume or a scoped set of series volumes.
 - Series import with generated `Vol.xx` titles, multi-volume ready marking, selected-volume unready, and ready-only export.
-- Diagnose possible split double-page spreads from a single-volume GUI workflow.
-- Manually confirm true spreads, add missed spread pairs, and check whether the current Apple Books preview layout damages them.
+- Diagnose possible split double-page spreads from a linked single-volume Diagnose window.
+- Manually confirm true spreads, add missed spread pairs from Spine order, and check whether the current Apple Books preview layout damages them.
 - Review color-marked blank insertion suggestions before executing one insertion at a time.
 
 ## Install
@@ -82,10 +82,11 @@ The GUI normalizes EPUB internals during export. For example, if source pages 1-
 
 ## Diagnosis Workflow
 
-The `Diagnose` tab is a human-in-the-loop repair workflow. It can run or import
-cross-page spread candidates, but it does not trust them automatically. Mark each
-true spread manually, mark false positives as false when useful, and add any
-missed adjacent spread pair before checking damage.
+The `Diagnose` inspector entry opens a separate human-in-the-loop repair window.
+It can run cross-page spread discovery, but it does not trust candidates
+automatically. Mark each true spread manually, mark false positives as false when
+useful, and add any missed adjacent spread pair by selecting the two real pages in
+the Diagnose Spine order and clicking `Add Selected As Spread`.
 
 Damage checking uses the same Apple Books cover-gap preview flag as the main
 spread preview. When the flag is enabled, the virtual blank page beside the cover
@@ -96,6 +97,16 @@ one-blank insertions that repair at least one damaged confirmed spread without
 breaking currently intact confirmed spreads. Red markers show protected gaps.
 The tool inserts only the selected suggestion, then marks diagnosis results stale
 until you click `Recheck Layout`.
+
+Typical diagnosis pass:
+
+1. Open a PDF volume, then click `Open Diagnose Window`.
+2. Click `Run Cross-Page Scan`.
+3. Review candidates visually and mark each relevant row true or false.
+4. Select exactly two adjacent real pages in the Diagnose Spine order and click `Add Selected As Spread` for any missed spread.
+5. Click `Check Damage Against Current Layout`.
+6. Click `Run Insert-Point Scoring`.
+7. Select one suggested insert row, click `Insert Selected Blank`, then click `Recheck Layout` before applying another insertion.
 
 ## Series Project Workflow
 

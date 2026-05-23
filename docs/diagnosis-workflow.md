@@ -6,14 +6,15 @@ review step.
 ## Phases
 
 1. Open one PDF volume.
-2. Open the `Diagnose` tab.
-3. Run `Run Cross-Page Scan` or import an `adjacent_clusters.csv` file from
-   `manga-spread-continuity`.
-4. Review each candidate visually in the main preview and mark it true or false.
-5. Use `Add Missing Spread...` for true spreads that did not appear in the scan.
+2. Click `Open Diagnose Window`.
+3. Click `Run Cross-Page Scan`.
+4. Review each candidate visually in the Diagnose preview and mark it true or
+   false.
+5. For a true spread that did not appear in the scan, select exactly two
+   adjacent real pages in the Diagnose Spine order and click
+   `Add Selected As Spread`.
 6. Click `Check Damage Against Current Layout`.
-7. Run `Run Insert-Point Scoring` or import a `gaps.csv` file from
-   `manga-insert-point-scorer`.
+7. Click `Run Insert-Point Scoring`.
 8. Review green and red spine markers.
 9. Select one suggested insert row and click `Insert Selected Blank`.
 10. Click `Recheck Layout` before deciding on another insertion.
@@ -23,6 +24,11 @@ review step.
 The GUI never performs scan, damage check, scoring, and insertion as one chained
 operation. Scan results are candidates. Insert scores are suggestions. Only a
 user click changes the layout.
+
+The Diagnose window is linked to the main editor. Selecting a row in either
+Spine order selects the same row in the other view, and both views read from the
+same layout model and diagnosis session. Closing and reopening the Diagnose
+window does not discard confirmed spreads or diagnosis state.
 
 ## Apple Books Cover Gap
 
@@ -42,5 +48,9 @@ would break an intact confirmed spread.
 
 ## Prototype Outputs
 
-The spread scan consumes `adjacent_clusters.csv` from `manga-spread-continuity`.
-The insert review consumes `gaps.csv` from `manga-insert-point-scorer`.
+The normal workflow launches `manga-spread-continuity` for spread candidates and
+`manga-insert-point-scorer` for insertion suggestions when those sibling
+prototype environments are available. Insert scores can still be imported from a
+`gaps.csv` file for prototype handoff. Spread candidate CSV import is retained as
+an advanced command path, but the primary missed-spread workflow is selecting
+pages directly from the Diagnose Spine order.
