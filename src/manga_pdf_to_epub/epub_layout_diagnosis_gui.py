@@ -116,7 +116,7 @@ class DiagnosisWindow:
         self.window.title("Diagnose Spreads")
         self.window.geometry("1180x760")
         self.window.minsize(980, 620)
-        self.window.protocol("WM_DELETE_WINDOW", app._diagnose_window_closed)
+        self.window.protocol("WM_DELETE_WINDOW", lambda: app._diagnose_window_closed(self))
         self.photo_refs = []
         self.spine_list = None
         self.preview = None
@@ -135,12 +135,17 @@ class DiagnosisWindow:
         ttk.Label(self.left, text="Spine order").pack(anchor=tk.W)
         self.spine_list = tk.Listbox(self.left, exportselection=False, activestyle="dotbox", selectmode=tk.EXTENDED)
         self.spine_list.pack(fill=tk.BOTH, expand=True, pady=(6, 0))
-        self.spine_list.bind("<<ListboxSelect>>", lambda _event: self.app.sync_selection_from_diagnosis())
+        self.spine_list.bind("<<ListboxSelect>>", lambda _event: self._invoke_app_callback("sync_selection_from_diagnosis"))
         ttk.Label(self.center, text="RTL spread preview").pack(anchor=tk.W)
         self.preview = tk.Canvas(self.center, background="#202020", highlightthickness=0)
         self.preview.pack(fill=tk.BOTH, expand=True, pady=(6, 0))
-        self.preview.bind("<Configure>", lambda _event: self.app.refresh_diagnosis_preview())
+        self.preview.bind("<Configure>", lambda _event: self._invoke_app_callback("refresh_diagnosis_preview"))
         self.panel = DiagnosisPanel(self.right, callbacks)
+
+    def _invoke_app_callback(self, name: str) -> None:
+        callback = getattr(self.app, name, None)
+        if callback is not None:
+            callback()
 
     def focus(self) -> None:
         self.window.lift()

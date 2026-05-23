@@ -37,14 +37,21 @@ class EpubLayoutDiagnosisMixin:
         self.diagnosis_window = DiagnosisWindow(self, self.root, diagnosis_callbacks(self))
         self.refresh_diagnosis_panel()
 
-    def _diagnose_window_closed(self) -> None:
-        window = getattr(self, "diagnosis_window", None)
-        self.diagnosis_window = None
+    def _diagnose_window_closed(self, closed_window=None) -> None:
+        window = closed_window if closed_window is not None else getattr(self, "diagnosis_window", None)
+        if closed_window is None or closed_window is getattr(self, "diagnosis_window", None):
+            self.diagnosis_window = None
         if window is not None and hasattr(window, "destroy"):
             window.destroy()
 
+    def _active_diagnosis_panel(self):
+        window = getattr(self, "diagnosis_window", None)
+        if window is not None and getattr(window, "panel", None) is not None:
+            return window.panel
+        return getattr(self, "diagnosis_panel", None)
+
     def _selected_spread_candidate_id(self) -> str | None:
-        panel = getattr(self, "diagnosis_panel", None)
+        panel = self._active_diagnosis_panel()
         if panel is None:
             return None
         selection = panel.candidate_list.curselection()
@@ -56,7 +63,7 @@ class EpubLayoutDiagnosisMixin:
 
     def _selected_insert_suggestion(self):
         classification = getattr(self, "insert_classification", None)
-        panel = getattr(self, "diagnosis_panel", None)
+        panel = self._active_diagnosis_panel()
         if classification is None or panel is None:
             return None
         selection = panel.insert_list.curselection()
@@ -310,8 +317,10 @@ def reset_diagnosis_for_model(app, model) -> None:
     if source_page_count is None:
         source_page_count = len(getattr(model, "entries", []))
     existing_panel = getattr(app, "diagnosis_panel", None)
+    existing_window = getattr(app, "diagnosis_window", None)
     initialize_diagnosis_state(app, source_page_count)
     app.diagnosis_panel = existing_panel
+    app.diagnosis_window = existing_window
     refresh_diagnosis_panel(app)
 
 
@@ -339,9 +348,9 @@ def diagnosis_callbacks(app) -> DiagnosisPanelCallbacks:
 
 
 def refresh_diagnosis_panel(app) -> None:
-    panel = getattr(app, "diagnosis_panel", None)
+    panels = _diagnosis_panels(app)
     session = getattr(app, "diagnosis_session", None)
-    if panel is None or session is None:
+    if not panels or session is None:
         return
     summary = diagnosis_summary_texts(
         session,
@@ -349,13 +358,26 @@ def refresh_diagnosis_panel(app) -> None:
         getattr(app, "insert_classification", None),
         getattr(app, "diagnosis_stale", False),
     )
-    panel.summary_var.set(summary.candidates)
-    panel.damage_var.set(summary.damage)
-    panel.insert_var.set(summary.insert_points)
-    panel.stale_var.set(summary.staleness)
-    _replace_list_preserving_yview(panel.candidate_list, [_candidate_row(item) for item in session.spread_candidates()])
-    _replace_list_preserving_yview(panel.damage_list, [_damage_row(item) for item in getattr(app, "spread_damage", [])])
-    _replace_list_preserving_yview(panel.insert_list, _insert_rows(getattr(app, "insert_classification", None)))
+    for panel in panels:
+        panel.summary_var.set(summary.candidates)
+        panel.damage_var.set(summary.damage)
+        panel.insert_var.set(summary.insert_points)
+        panel.stale_var.set(summary.staleness)
+        _replace_list_preserving_yview(panel.candidate_list, [_candidate_row(item) for item in session.spread_candidates()])
+        _replace_list_preserving_yview(panel.damage_list, [_damage_row(item) for item in getattr(app, "spread_damage", [])])
+        _replace_list_preserving_yview(panel.insert_list, _insert_rows(getattr(app, "insert_classification", None)))
+
+
+def _diagnosis_panels(app) -> list[DiagnosisPanel]:
+    panels = []
+    inspector_panel = getattr(app, "diagnosis_panel", None)
+    if inspector_panel is not None:
+        panels.append(inspector_panel)
+    window = getattr(app, "diagnosis_window", None)
+    window_panel = getattr(window, "panel", None) if window is not None else None
+    if window_panel is not None and window_panel is not inspector_panel:
+        panels.append(window_panel)
+    return panels
 
 
 def _replace_list_preserving_yview(listbox, rows: list[str]) -> None:

@@ -12,10 +12,15 @@ from manga_pdf_to_epub.epub_layout_diagnosis import (
     diagnose_spread_damage,
 )
 from manga_pdf_to_epub.epub_layout_gui import EpubLayoutApp
-from manga_pdf_to_epub.epub_layout_diagnosis_controller import _run_insert_scoring_work, _run_spread_scan_work
+from manga_pdf_to_epub.epub_layout_diagnosis_controller import (
+    _run_insert_scoring_work,
+    _run_spread_scan_work,
+    reset_diagnosis_for_model,
+)
 from manga_pdf_to_epub.epub_layout_diagnosis_gui import (
     DiagnosisPanel,
     DiagnosisPanelCallbacks,
+    DiagnosisWindow,
     diagnosis_summary_texts,
 )
 from tests.gui_helpers import FakeDeleteModel, FakeListbox
@@ -167,6 +172,24 @@ class DiagnosisGuiIntegrationTests(unittest.TestCase):
 
 
 class DiagnosisWindowLifecycleTests(unittest.TestCase):
+    def _panel(self, candidate_selection=None):
+        class Var:
+            def __init__(self):
+                self.value = None
+
+            def set(self, value):
+                self.value = value
+
+        return SimpleNamespace(
+            summary_var=Var(),
+            damage_var=Var(),
+            insert_var=Var(),
+            stale_var=Var(),
+            candidate_list=FakeListbox(selection=candidate_selection),
+            damage_list=FakeListbox(selection=None),
+            insert_list=FakeListbox(selection=None),
+        )
+
     def test_open_diagnose_window_requires_loaded_model(self):
         app = EpubLayoutApp.__new__(EpubLayoutApp)
         app.model = None
@@ -218,6 +241,61 @@ class DiagnosisWindowLifecycleTests(unittest.TestCase):
             [(3, 4)],
             [(item.start_page, item.end_page) for item in app.diagnosis_session.confirmed_spreads()],
         )
+
+    def test_close_stale_diagnose_window_does_not_clear_current_window(self):
+        app = EpubLayoutApp.__new__(EpubLayoutApp)
+        destroyed = []
+        current = SimpleNamespace(destroy=lambda: destroyed.append("current"))
+        stale = SimpleNamespace(destroy=lambda: destroyed.append("stale"))
+        app.diagnosis_window = current
+
+        app._diagnose_window_closed(stale)
+
+        self.assertIs(current, app.diagnosis_window)
+        self.assertEqual(["stale"], destroyed)
+
+    def test_reset_diagnosis_for_model_keeps_open_window_linked(self):
+        app = EpubLayoutApp.__new__(EpubLayoutApp)
+        window = SimpleNamespace(panel=self._panel())
+        app.diagnosis_window = window
+        app.diagnosis_panel = None
+        app.spread_damage = ["old"]
+        app.insert_classification = "old"
+        app.diagnosis_stale = True
+
+        reset_diagnosis_for_model(app, SimpleNamespace(entries=[page(1), page(2)], source_page_count=2))
+
+        self.assertIs(window, app.diagnosis_window)
+        self.assertEqual(2, app.diagnosis_session.source_page_count)
+        self.assertEqual("Candidates: 0 total, 0 true, 0 false, 0 pending.", window.panel.summary_var.value)
+
+    def test_window_callback_hook_noops_until_later_sync_methods_exist(self):
+        window = DiagnosisWindow.__new__(DiagnosisWindow)
+        window.app = SimpleNamespace()
+
+        window._invoke_app_callback("sync_selection_from_diagnosis")
+
+        window.app = SimpleNamespace(refresh_diagnosis_preview=lambda: setattr(window, "preview_refreshed", True))
+        window._invoke_app_callback("refresh_diagnosis_preview")
+        self.assertTrue(window.preview_refreshed)
+
+    def test_refresh_and_selection_use_diagnose_window_panel_when_open(self):
+        app = EpubLayoutApp.__new__(EpubLayoutApp)
+        app.diagnosis_session = DiagnosisSession(source_page_count=20)
+        app.diagnosis_session.load_spread_candidates([SpreadCandidate("003-004", 3, 4, 0.91, 0.88, "review")])
+        inspector_panel = self._panel(candidate_selection=None)
+        window_panel = self._panel(candidate_selection=0)
+        app.diagnosis_panel = inspector_panel
+        app.diagnosis_window = SimpleNamespace(panel=window_panel)
+        app.spread_damage = []
+        app.insert_classification = None
+        app.diagnosis_stale = False
+
+        app.refresh_diagnosis_panel()
+
+        self.assertEqual("003-004", app._selected_spread_candidate_id())
+        self.assertEqual(window_panel.summary_var.value, inspector_panel.summary_var.value)
+        self.assertEqual(window_panel.candidate_list.items, inspector_panel.candidate_list.items)
 
 
 class DiagnosisReviewWorkflowTests(unittest.TestCase):
