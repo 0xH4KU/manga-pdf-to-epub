@@ -178,6 +178,27 @@ class EpubLayoutGuiCommandTests(unittest.TestCase):
         self.assertFalse(app._busy)
         self.assertEqual("bad", app.failure_message)
 
+    def test_run_background_failure_handler_survives_async_after(self):
+        app = EpubLayoutApp.__new__(EpubLayoutApp)
+        app.root = FakeRoot()
+        app.status = FakeStatus()
+        app._busy = False
+        queued = []
+        app.root.after = lambda delay, callback: queued.append(callback)
+
+        with patch("manga_pdf_to_epub.epub_layout_gui.threading.Thread") as thread:
+            thread.side_effect = lambda target, daemon: SimpleNamespace(start=target)
+            app._run_background(
+                "Working...",
+                lambda: (_ for _ in ()).throw(ValueError("late bad")),
+                lambda value: None,
+                on_failure=lambda exc: setattr(app, "failure_message", str(exc)),
+            )
+
+        queued[0]()
+
+        self.assertEqual("late bad", app.failure_message)
+
     def test_run_background_rejects_reentrant_work(self):
         app = EpubLayoutApp.__new__(EpubLayoutApp)
         app.root = FakeRoot()

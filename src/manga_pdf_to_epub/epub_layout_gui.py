@@ -128,7 +128,7 @@ class EpubLayoutApp(EpubLayoutDiagnosisMixin):
                 result = work()
                 self.root.after(0, lambda: self._background_done(result, on_success))
             except Exception as exc:
-                self.root.after(0, lambda: self._background_failed(exc, on_failure))
+                self.root.after(0, lambda exc=exc: self._background_failed(exc, on_failure))
 
         threading.Thread(target=worker, daemon=True).start()
         return True
