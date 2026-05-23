@@ -56,6 +56,27 @@ class SpreadDamage:
     end_entry_index: int | None
 
 
+@dataclass(frozen=True)
+class InsertReviewPoint:
+    kind: Literal["suggested", "protected"]
+    gap_id: str
+    after_page: int
+    before_page: int
+    insertion_index: int
+    marker_entry_index: int
+    score: float
+    label: str
+    reason: str
+    fixes: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class InsertClassification:
+    suggestions: list[InsertReviewPoint]
+    protected: list[InsertReviewPoint]
+    stale_gap_ids: list[str]
+
+
 @dataclass
 class ReviewedSpreadCandidate:
     candidate: SpreadCandidate
@@ -82,6 +103,12 @@ INSERT_GAP_REQUIRED_COLUMNS = {
 }
 
 REVIEWABLE_INSERT_LABEL_PREFIXES = ("A ", "B ", "C ", "D ")
+
+
+class _DiagnosticBlank:
+    label = "Diagnostic blank"
+    source_index = None
+    is_blank = True
 
 
 def read_spread_candidates_csv(path: Path) -> list[SpreadCandidate]:
@@ -214,6 +241,118 @@ def diagnose_spread_damage(
             )
         )
     return reports
+
+
+def classify_insert_points(
+    entries: list,
+    confirmed_spreads: list[SpreadCandidate],
+    insert_candidates: list[InsertCandidate],
+    uses_apple_cover_gap: bool,
+) -> InsertClassification:
+    current_damage = diagnose_spread_damage(entries, confirmed_spreads, uses_apple_cover_gap)
+    current_by_id = {item.pair_id: item for item in current_damage}
+    intact_before = {item.pair_id for item in current_damage if item.status == "intact"}
+    damaged_before = {item.pair_id for item in current_damage if item.status == "damaged"}
+    suggestions: list[InsertReviewPoint] = []
+    protected: list[InsertReviewPoint] = []
+    stale: list[str] = []
+    source_to_entry = _source_to_entry_index(entries)
+
+    for candidate in reviewable_insert_candidates(insert_candidates):
+        insertion_index = _insertion_index_for_candidate(candidate, source_to_entry)
+        if insertion_index is None:
+            stale.append(candidate.gap_id)
+            continue
+        marker_entry_index = max(0, insertion_index - 1)
+        inside_pair = _confirmed_pair_for_gap(candidate, confirmed_spreads)
+        if inside_pair is not None:
+            protected.append(
+                InsertReviewPoint(
+                    "protected",
+                    candidate.gap_id,
+                    candidate.after_page,
+                    candidate.before_page,
+                    insertion_index,
+                    marker_entry_index,
+                    candidate.safe_insert_score,
+                    candidate.label,
+                    f"Gap is inside confirmed spread {inside_pair.pair_id}",
+                )
+            )
+            continue
+
+        simulated = list(entries)
+        simulated.insert(marker_entry_index, _DiagnosticBlank())
+        after_damage = diagnose_spread_damage(simulated, confirmed_spreads, uses_apple_cover_gap)
+        after_by_id = {item.pair_id: item for item in after_damage}
+        breaks = sorted(pair_id for pair_id in intact_before if after_by_id[pair_id].status != "intact")
+        if breaks:
+            protected.append(
+                InsertReviewPoint(
+                    "protected",
+                    candidate.gap_id,
+                    candidate.after_page,
+                    candidate.before_page,
+                    insertion_index,
+                    marker_entry_index,
+                    candidate.safe_insert_score,
+                    candidate.label,
+                    f"Insertion would damage confirmed spread {breaks[0]}",
+                )
+            )
+            continue
+        fixes = tuple(
+            pair_id
+            for pair_id in sorted(damaged_before)
+            if current_by_id[pair_id].status != "intact" and after_by_id[pair_id].status == "intact"
+        )
+        if fixes:
+            suggestions.append(
+                InsertReviewPoint(
+                    "suggested",
+                    candidate.gap_id,
+                    candidate.after_page,
+                    candidate.before_page,
+                    insertion_index,
+                    marker_entry_index,
+                    candidate.safe_insert_score,
+                    candidate.label,
+                    f"Repairs confirmed spread {fixes[0]}",
+                    fixes,
+                )
+            )
+
+    suggestions.sort(key=lambda item: (-item.score, item.insertion_index))
+    protected.sort(key=lambda item: (item.insertion_index, -item.score))
+    return InsertClassification(suggestions, protected, stale)
+
+
+def _source_to_entry_index(entries: list) -> dict[int, int]:
+    result: dict[int, int] = {}
+    for index, entry in enumerate(entries):
+        source_index = getattr(entry, "source_index", None)
+        if source_index is not None and not getattr(entry, "is_blank", False):
+            result[source_index] = index
+    return result
+
+
+def _insertion_index_for_candidate(candidate: InsertCandidate, source_to_entry: dict[int, int]) -> int | None:
+    after_index = source_to_entry.get(candidate.after_page)
+    before_index = source_to_entry.get(candidate.before_page)
+    if after_index is None or before_index is None:
+        return None
+    if after_index > before_index:
+        return None
+    return after_index + 2
+
+
+def _confirmed_pair_for_gap(
+    candidate: InsertCandidate, confirmed_spreads: list[SpreadCandidate]
+) -> SpreadCandidate | None:
+    for spread in confirmed_spreads:
+        if spread.start_page == candidate.after_page and spread.end_page == candidate.before_page:
+            return spread
+    return None
 
 
 def _read_dict_rows(path: Path, required_columns: set[str]) -> list[dict[str, str]]:
