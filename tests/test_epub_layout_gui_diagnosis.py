@@ -166,6 +166,60 @@ class DiagnosisGuiIntegrationTests(unittest.TestCase):
         self.assertFalse(app.diagnosis_stale)
 
 
+class DiagnosisWindowLifecycleTests(unittest.TestCase):
+    def test_open_diagnose_window_requires_loaded_model(self):
+        app = EpubLayoutApp.__new__(EpubLayoutApp)
+        app.model = None
+        app.status = SimpleNamespace(set=lambda value: setattr(app, "status_value", value))
+
+        app.open_diagnose_window()
+
+        self.assertEqual("Open a PDF before opening Diagnose.", app.status_value)
+        self.assertIsNone(getattr(app, "diagnosis_window", None))
+
+    def test_open_diagnose_window_creates_and_focuses_toplevel(self):
+        app = EpubLayoutApp.__new__(EpubLayoutApp)
+        app.root = object()
+        app.model = SimpleNamespace(entries=[page(1), page(2)])
+        app.status = SimpleNamespace(set=lambda value: setattr(app, "status_value", value))
+        app.refresh_diagnosis_panel = lambda: setattr(app, "panel_refreshed", True)
+        created = []
+
+        class FakeDiagnosisWindow:
+            def __init__(self, app_arg, parent, callbacks):
+                self.app_arg = app_arg
+                self.parent = parent
+                self.callbacks = callbacks
+                self.focus_count = 0
+                created.append(self)
+
+            def focus(self):
+                self.focus_count += 1
+
+        with patch("manga_pdf_to_epub.epub_layout_diagnosis_controller.DiagnosisWindow", FakeDiagnosisWindow):
+            app.open_diagnose_window()
+            app.open_diagnose_window()
+
+        self.assertIs(created[0], app.diagnosis_window)
+        self.assertEqual(1, len(created))
+        self.assertEqual(1, created[0].focus_count)
+        self.assertTrue(app.panel_refreshed)
+
+    def test_close_diagnose_window_clears_window_reference_only(self):
+        app = EpubLayoutApp.__new__(EpubLayoutApp)
+        app.diagnosis_session = DiagnosisSession(source_page_count=20)
+        app.diagnosis_session.add_manual_spread(3, 4)
+        app.diagnosis_window = object()
+
+        app._diagnose_window_closed()
+
+        self.assertIsNone(app.diagnosis_window)
+        self.assertEqual(
+            [(3, 4)],
+            [(item.start_page, item.end_page) for item in app.diagnosis_session.confirmed_spreads()],
+        )
+
+
 class DiagnosisReviewWorkflowTests(unittest.TestCase):
     def test_imported_candidates_replace_existing_session_candidates(self):
         app = EpubLayoutApp.__new__(EpubLayoutApp)

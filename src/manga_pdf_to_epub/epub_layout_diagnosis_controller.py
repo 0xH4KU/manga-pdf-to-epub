@@ -13,7 +13,7 @@ from .epub_layout_diagnosis import (
     read_insert_candidates_csv,
     read_spread_candidates_csv,
 )
-from .epub_layout_diagnosis_gui import DiagnosisPanel, DiagnosisPanelCallbacks, diagnosis_summary_texts
+from .epub_layout_diagnosis_gui import DiagnosisPanel, DiagnosisPanelCallbacks, DiagnosisWindow, diagnosis_summary_texts
 from .epub_layout_diagnosis_runner import (
     default_diagnosis_output_dir,
     resolve_insert_score_command,
@@ -25,6 +25,23 @@ from .epub_layout_diagnosis_runner import (
 class EpubLayoutDiagnosisMixin:
     def refresh_diagnosis_panel(self) -> None:
         refresh_diagnosis_panel(self)
+
+    def open_diagnose_window(self) -> None:
+        if getattr(self, "model", None) is None:
+            self.status.set("Open a PDF before opening Diagnose.")
+            return
+        existing = getattr(self, "diagnosis_window", None)
+        if existing is not None:
+            existing.focus()
+            return
+        self.diagnosis_window = DiagnosisWindow(self, self.root, diagnosis_callbacks(self))
+        self.refresh_diagnosis_panel()
+
+    def _diagnose_window_closed(self) -> None:
+        window = getattr(self, "diagnosis_window", None)
+        self.diagnosis_window = None
+        if window is not None and hasattr(window, "destroy"):
+            window.destroy()
 
     def _selected_spread_candidate_id(self) -> str | None:
         panel = getattr(self, "diagnosis_panel", None)
@@ -284,6 +301,7 @@ def initialize_diagnosis_state(app, source_page_count: int = 0) -> None:
     app.insert_classification = None
     app.diagnosis_stale = False
     app.diagnosis_panel = None
+    app.diagnosis_window = None
     app.spine_markers = {}
 
 

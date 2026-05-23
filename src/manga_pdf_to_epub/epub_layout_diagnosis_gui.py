@@ -107,3 +107,44 @@ class DiagnosisPanel:
             pady=(6, 0),
         )
         ttk.Button(parent, text="Recheck Layout", command=self.callbacks.recheck_diagnosis_layout).pack(fill=tk.X, pady=(6, 0))
+
+
+class DiagnosisWindow:
+    def __init__(self, app, parent, callbacks: DiagnosisPanelCallbacks):
+        self.app = app
+        self.window = tk.Toplevel(parent)
+        self.window.title("Diagnose Spreads")
+        self.window.geometry("1180x760")
+        self.window.minsize(980, 620)
+        self.window.protocol("WM_DELETE_WINDOW", app._diagnose_window_closed)
+        self.photo_refs = []
+        self.spine_list = None
+        self.preview = None
+        self.panel = None
+        self._build(callbacks)
+
+    def _build(self, callbacks: DiagnosisPanelCallbacks) -> None:
+        main = ttk.Panedwindow(self.window, orient=tk.HORIZONTAL)
+        main.pack(fill=tk.BOTH, expand=True)
+        self.left = ttk.Frame(main, padding=8)
+        self.center = ttk.Frame(main, padding=8)
+        self.right = ttk.Frame(main, padding=8)
+        main.add(self.left, weight=1)
+        main.add(self.center, weight=3)
+        main.add(self.right, weight=1)
+        ttk.Label(self.left, text="Spine order").pack(anchor=tk.W)
+        self.spine_list = tk.Listbox(self.left, exportselection=False, activestyle="dotbox", selectmode=tk.EXTENDED)
+        self.spine_list.pack(fill=tk.BOTH, expand=True, pady=(6, 0))
+        self.spine_list.bind("<<ListboxSelect>>", lambda _event: self.app.sync_selection_from_diagnosis())
+        ttk.Label(self.center, text="RTL spread preview").pack(anchor=tk.W)
+        self.preview = tk.Canvas(self.center, background="#202020", highlightthickness=0)
+        self.preview.pack(fill=tk.BOTH, expand=True, pady=(6, 0))
+        self.preview.bind("<Configure>", lambda _event: self.app.refresh_diagnosis_preview())
+        self.panel = DiagnosisPanel(self.right, callbacks)
+
+    def focus(self) -> None:
+        self.window.lift()
+        self.window.focus_force()
+
+    def destroy(self) -> None:
+        self.window.destroy()
