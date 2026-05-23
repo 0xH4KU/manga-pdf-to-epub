@@ -37,6 +37,18 @@ class EpubLayoutDiagnosisMixin:
         index = selection[0]
         return candidates[index].candidate.pair_id if index < len(candidates) else None
 
+    def _selected_insert_suggestion(self):
+        classification = getattr(self, "insert_classification", None)
+        panel = getattr(self, "diagnosis_panel", None)
+        if classification is None or panel is None:
+            return None
+        selection = panel.insert_list.curselection()
+        if not selection:
+            return None
+        index = selection[0]
+        suggestions = classification.suggestions
+        return suggestions[index] if index < len(suggestions) else None
+
     def _load_spread_candidates(self, candidates: list[SpreadCandidate]) -> None:
         self.diagnosis_session.load_spread_candidates(candidates)
         self.spread_damage = []
@@ -158,6 +170,25 @@ class EpubLayoutDiagnosisMixin:
         self.status.set("Insert-point scoring failed.")
         messagebox.showerror("Insert-point scoring failed", str(exc))
 
+    def insert_selected_diagnosis_blank(self) -> None:
+        suggestion = self._selected_insert_suggestion()
+        if suggestion is None:
+            self.status.set("Select an insert suggestion first.")
+            return
+        try:
+            self.model.insert_blank(suggestion.insertion_index)
+            self.spread_damage = []
+            self.insert_classification = None
+            self.spine_markers = {}
+            self.diagnosis_stale = True
+            self._refresh_after_layout_edit(select_index=suggestion.insertion_index)
+            self.refresh_diagnosis_panel()
+            self.status.set(
+                f"Inserted blank for suggested gap {suggestion.gap_id}. Click Recheck Layout before continuing."
+            )
+        except Exception as exc:
+            messagebox.showerror("Diagnosis insert failed", str(exc))
+
     def check_confirmed_spread_damage(self) -> None:
         if getattr(self, "model", None) is None or getattr(self, "diagnosis_session", None) is None:
             return
@@ -262,7 +293,7 @@ def diagnosis_callbacks(app) -> DiagnosisPanelCallbacks:
         check_confirmed_spread_damage=app.check_confirmed_spread_damage,
         run_insert_point_scoring=app.run_insert_point_scoring,
         import_insert_scores=app.import_insert_scores,
-        insert_selected_diagnosis_blank=lambda: _stub_status(app, "Blank insertion from diagnosis will be wired in a later task."),
+        insert_selected_diagnosis_blank=app.insert_selected_diagnosis_blank,
         recheck_diagnosis_layout=lambda: _stub_status(app, "Layout recheck will be wired in a later task."),
     )
 

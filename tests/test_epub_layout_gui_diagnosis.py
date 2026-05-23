@@ -18,7 +18,7 @@ from manga_pdf_to_epub.epub_layout_diagnosis_gui import (
     DiagnosisPanelCallbacks,
     diagnosis_summary_texts,
 )
-from tests.gui_helpers import FakeListbox
+from tests.gui_helpers import FakeDeleteModel, FakeListbox
 
 
 def page(source_index: int):
@@ -400,6 +400,47 @@ class DiagnosisInsertWorkflowTests(unittest.TestCase):
 
         self.assertEqual("Insert-point scoring failed.", app.status_value)
         showerror.assert_called_once_with("Insert-point scoring failed", "bad gaps")
+
+
+class DiagnosisInsertionExecutionTests(unittest.TestCase):
+    def test_insert_selected_suggestion_calls_layout_model_once_and_marks_results_stale(self):
+        app = EpubLayoutApp.__new__(EpubLayoutApp)
+        app.model = FakeDeleteModel([page(index) for index in range(1, 41)])
+        app.apple_preview = SimpleNamespace(get=lambda: True)
+        app.diagnosis_session = DiagnosisSession(source_page_count=40)
+        app.diagnosis_session.add_manual_spread(37, 38)
+        app.spread_damage = diagnose_spread_damage(app.model.entries, app.diagnosis_session.confirmed_spreads(), True)
+        app.page_list = FakeListbox(selection=0)
+        app.status = SimpleNamespace(set=lambda value: setattr(app, "status_value", value))
+        app.refresh_diagnosis_panel = lambda: setattr(app, "panel_refreshed", True)
+        app.refresh_workspace_status = lambda: None
+        app._is_cover_entry = lambda _entry: False
+        app._load_insert_candidates(
+            [InsertCandidate("034-035", 34, 35, 0.94, "C scene_change", 0.7, 0.2, ("scene change",))]
+        )
+        app.diagnosis_panel = SimpleNamespace(insert_list=FakeListbox(selection=0))
+        app._refresh_after_layout_edit = lambda select_index: setattr(app, "selected_after_insert", select_index)
+
+        app.insert_selected_diagnosis_blank()
+
+        self.assertEqual("Blank 35", app.model.entries[34].label)
+        self.assertTrue(app.diagnosis_stale)
+        self.assertEqual([], app.spread_damage)
+        self.assertIsNone(app.insert_classification)
+        self.assertEqual({}, app.spine_markers)
+        self.assertEqual(34, app.selected_after_insert)
+        self.assertEqual("Inserted blank for suggested gap 034-035. Click Recheck Layout before continuing.", app.status_value)
+        self.assertTrue(app.panel_refreshed)
+
+    def test_insert_selected_requires_suggested_row(self):
+        app = EpubLayoutApp.__new__(EpubLayoutApp)
+        app.model = None
+        app.insert_classification = None
+        app.status = SimpleNamespace(set=lambda value: setattr(app, "status_value", value))
+
+        app.insert_selected_diagnosis_blank()
+
+        self.assertEqual("Select an insert suggestion first.", app.status_value)
 
 
 if __name__ == "__main__":
