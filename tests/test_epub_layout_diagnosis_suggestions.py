@@ -42,7 +42,7 @@ class InsertSuggestionTests(unittest.TestCase):
 
     def test_candidate_that_breaks_currently_intact_spread_is_protected(self):
         entries = [page(index) for index in range(1, 8)]
-        confirmed = [SpreadCandidate("001-002", 1, 2, 1.0, 1.0, "manual")]
+        confirmed = [SpreadCandidate("003-004", 3, 4, 1.0, 1.0, "manual")]
         insert_candidates = [
             InsertCandidate("001-002", 1, 2, 0.91, "C scene_change", 0.7, 0.2, ("scene change",)),
         ]
@@ -50,7 +50,9 @@ class InsertSuggestionTests(unittest.TestCase):
         result = classify_insert_points(entries, confirmed, insert_candidates, uses_apple_cover_gap=False)
 
         self.assertEqual([], result.suggestions)
+        self.assertEqual(1, len(result.protected))
         self.assertEqual("protected", result.protected[0].kind)
+        self.assertIn("003-004", result.protected[0].reason)
 
     def test_stale_candidate_with_missing_source_page_is_ignored(self):
         entries = [page(index) for index in range(1, 6)]
