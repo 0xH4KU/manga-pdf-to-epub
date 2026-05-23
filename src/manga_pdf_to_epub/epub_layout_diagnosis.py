@@ -282,7 +282,7 @@ def classify_insert_points(
             continue
 
         simulated = list(entries)
-        simulated.insert(marker_entry_index, _DiagnosticBlank())
+        simulated.insert(insertion_index, _DiagnosticBlank())
         after_damage = diagnose_spread_damage(simulated, confirmed_spreads, uses_apple_cover_gap)
         after_by_id = {item.pair_id: item for item in after_damage}
         breaks = sorted(pair_id for pair_id in intact_before if after_by_id[pair_id].status != "intact")
@@ -341,9 +341,9 @@ def _insertion_index_for_candidate(candidate: InsertCandidate, source_to_entry: 
     before_index = source_to_entry.get(candidate.before_page)
     if after_index is None or before_index is None:
         return None
-    if after_index > before_index:
+    if before_index != after_index + 1:
         return None
-    return after_index + 2
+    return after_index + 1
 
 
 def _confirmed_pair_for_gap(

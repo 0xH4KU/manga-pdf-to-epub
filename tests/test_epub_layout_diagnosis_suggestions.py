@@ -24,7 +24,8 @@ class InsertSuggestionTests(unittest.TestCase):
         result = classify_insert_points(entries, confirmed, insert_candidates, uses_apple_cover_gap=True)
 
         self.assertEqual([34], [item.after_page for item in result.suggestions])
-        self.assertEqual(35, result.suggestions[0].insertion_index)
+        self.assertEqual(34, result.suggestions[0].insertion_index)
+        self.assertEqual(33, result.suggestions[0].marker_entry_index)
         self.assertEqual(("037-038",), result.suggestions[0].fixes)
 
     def test_gap_inside_confirmed_spread_is_protected_even_with_high_score(self):
@@ -66,6 +67,19 @@ class InsertSuggestionTests(unittest.TestCase):
         self.assertEqual([], result.suggestions)
         self.assertEqual([], result.protected)
         self.assertEqual(["009-010"], result.stale_gap_ids)
+
+    def test_stale_candidate_with_separated_source_pages_is_ignored(self):
+        entries = [page(1), page(2), page(99), page(3), page(4), page(5)]
+        confirmed = [SpreadCandidate("003-004", 3, 4, 1.0, 1.0, "manual")]
+        insert_candidates = [
+            InsertCandidate("002-003", 2, 3, 0.80, "C scene_change", 0.7, 0.2, ("scene change",)),
+        ]
+
+        result = classify_insert_points(entries, confirmed, insert_candidates, uses_apple_cover_gap=False)
+
+        self.assertEqual([], result.suggestions)
+        self.assertEqual([], result.protected)
+        self.assertEqual(["002-003"], result.stale_gap_ids)
 
 
 if __name__ == "__main__":
