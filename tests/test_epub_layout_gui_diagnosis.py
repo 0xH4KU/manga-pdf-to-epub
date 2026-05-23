@@ -336,10 +336,10 @@ class DiagnosisInsertWorkflowTests(unittest.TestCase):
         )
 
         self.assertEqual(1, len(app.insert_classification.suggestions))
-        self.assertIn("insert +0.94", app.page_list.items[34])
-        self.assertIn("protected", app.page_list.items[37])
-        self.assertEqual({"foreground": "#0b6b2b"}, app.page_list.item_options[34])
-        self.assertEqual({"foreground": "#9f1d20"}, app.page_list.item_options[37])
+        self.assertIn("insert +0.94", app.page_list.items[33])
+        self.assertIn("protected", app.page_list.items[36])
+        self.assertEqual({"foreground": "#0b6b2b"}, app.page_list.item_options[33])
+        self.assertEqual({"foreground": "#9f1d20"}, app.page_list.item_options[36])
         self.assertEqual("Loaded 2 insert scores: 1 suggested, 1 protected.", app.status_value)
         self.assertTrue(app.panel_refreshed)
 

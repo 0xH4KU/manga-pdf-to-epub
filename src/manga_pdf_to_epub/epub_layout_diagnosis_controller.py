@@ -90,9 +90,9 @@ class EpubLayoutDiagnosisMixin:
         )
         self.spine_markers = {}
         for item in self.insert_classification.protected:
-            self.spine_markers[item.insertion_index] = item
+            self.spine_markers[item.marker_entry_index] = item
         for item in self.insert_classification.suggestions:
-            self.spine_markers[item.insertion_index] = item
+            self.spine_markers[item.marker_entry_index] = item
         self.diagnosis_stale = False
         self.refresh_list(preserve_yview=True)
         self.refresh_diagnosis_panel()
