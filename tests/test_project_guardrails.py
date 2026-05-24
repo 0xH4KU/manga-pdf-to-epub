@@ -1,4 +1,8 @@
 import ast
+import os
+import stat
+import subprocess
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -81,6 +85,40 @@ class ProjectGuardrailTests(unittest.TestCase):
 
         self.assertIn('manga-to-epub = "manga_pdf_to_epub.cli.pdf_to_epub_lossless:main"', pyproject)
         self.assertIn('pdf-to-epub-lossless = "manga_pdf_to_epub.cli.pdf_to_epub_lossless:main"', pyproject)
+
+    def test_smoke_uses_python_scripts_dir_for_console_commands(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            fake_bin = tmp_path / "bin"
+            fake_bin.mkdir()
+            fake_python = fake_bin / "python"
+            fake_scripts = tmp_path / "python-scripts"
+            fake_scripts.mkdir()
+            fake_python.write_text(
+                "#!/bin/sh\n"
+                "if [ \"$1\" = \"-c\" ]; then\n"
+                "  printf '%s\\n' \"$FAKE_PYTHON_SCRIPTS\"\n"
+                "fi\n",
+                encoding="utf-8",
+            )
+            fake_python.chmod(fake_python.stat().st_mode | stat.S_IXUSR)
+
+            env = os.environ.copy()
+            env["PATH"] = f"{fake_bin}{os.pathsep}{env['PATH']}"
+            env["FAKE_PYTHON_SCRIPTS"] = str(fake_scripts)
+
+            result = subprocess.run(
+                ["make", "-n", "smoke", "PYTHON=python"],
+                check=True,
+                capture_output=True,
+                text=True,
+                env=env,
+            )
+
+        self.assertNotIn("./manga-to-epub", result.stdout)
+        self.assertNotIn("./pdf-to-epub-lossless", result.stdout)
+        self.assertIn(f'"{fake_scripts}/manga-to-epub" --help', result.stdout)
+        self.assertIn(f'"{fake_scripts}/pdf-to-epub-lossless" --help', result.stdout)
 
 
 if __name__ == "__main__":
