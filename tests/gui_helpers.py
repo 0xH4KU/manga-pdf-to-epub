@@ -32,6 +32,7 @@ class FakeListbox:
         self.selection = selection
         self.current_yview = yview
         self.moved_to = None
+        self.seen = []
         self.item_options = {}
 
     def curselection(self):
@@ -53,8 +54,14 @@ class FakeListbox:
     def selection_clear(self, *_args):
         self.selection = None
 
-    def selection_set(self, index):
-        self.selection = index
+    def selection_set(self, index, last=None):
+        indexes = tuple(range(index, last + 1)) if last is not None else (index,)
+        if self.selection is None:
+            self.selection = indexes[0] if len(indexes) == 1 else indexes
+            return
+        current = self.curselection()
+        merged = (*current, *(item for item in indexes if item not in current))
+        self.selection = merged[0] if len(merged) == 1 else merged
 
     def yview(self):
         return self.current_yview
@@ -62,6 +69,9 @@ class FakeListbox:
     def yview_moveto(self, fraction):
         self.moved_to = fraction
         self.current_yview = (fraction, fraction)
+
+    def see(self, index):
+        self.seen.append(index)
 
     def nearest(self, y):
         if not self.items:

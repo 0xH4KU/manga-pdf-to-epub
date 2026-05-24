@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shutil
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, simpledialog, ttk
@@ -15,6 +16,7 @@ from .epub_layout_diagnosis import (
 )
 from .epub_layout_diagnosis_gui import DiagnosisPanel, DiagnosisPanelCallbacks, DiagnosisWindow, diagnosis_summary_texts
 from .epub_layout_diagnosis_runner import (
+    DiagnosisSettings,
     default_diagnosis_output_dir,
     resolve_insert_score_command,
     resolve_spread_scan_command,
@@ -71,7 +73,12 @@ class EpubLayoutDiagnosisMixin:
         if existing is not None:
             existing.focus()
             return
-        self.diagnosis_window = DiagnosisWindow(self, self.root, diagnosis_callbacks(self))
+        self.diagnosis_window = DiagnosisWindow(
+            self,
+            self.root,
+            diagnosis_callbacks(self),
+            getattr(self, "diagnosis_settings", DiagnosisSettings()),
+        )
         self.refresh_diagnosis_spine()
         self.refresh_diagnosis_panel()
 
@@ -106,6 +113,14 @@ class EpubLayoutDiagnosisMixin:
         self.page_list.selection_clear(0, tk.END)
         if selected is not None:
             self.page_list.selection_set(selected)
+            self.page_list.see(selected)
+
+    def _set_main_selection_range(self, indexes: tuple[int, ...]) -> None:
+        self.page_list.selection_clear(0, tk.END)
+        for index in indexes:
+            self.page_list.selection_set(index)
+        if indexes:
+            self.page_list.see(indexes[0])
 
     def _set_diagnosis_selection(self, selected: int | None) -> None:
         window = getattr(self, "diagnosis_window", None)
@@ -114,6 +129,17 @@ class EpubLayoutDiagnosisMixin:
         window.spine_list.selection_clear(0, tk.END)
         if selected is not None:
             window.spine_list.selection_set(selected)
+            window.spine_list.see(selected)
+
+    def _set_diagnosis_selection_range(self, indexes: tuple[int, ...]) -> None:
+        window = getattr(self, "diagnosis_window", None)
+        if window is None:
+            return
+        window.spine_list.selection_clear(0, tk.END)
+        for index in indexes:
+            window.spine_list.selection_set(index)
+        if indexes:
+            window.spine_list.see(indexes[0])
 
     def _select_first_spine_row(self) -> None:
         self.page_list.selection_clear(0, tk.END)
@@ -135,6 +161,10 @@ class EpubLayoutDiagnosisMixin:
         return getattr(self, "diagnosis_panel", None)
 
     def _selected_spread_candidate_id(self) -> str | None:
+        candidate = self._selected_spread_candidate()
+        return candidate.pair_id if candidate is not None else None
+
+    def _selected_spread_candidate(self) -> SpreadCandidate | None:
         panel = self._active_diagnosis_panel()
         if panel is None:
             return None
@@ -143,7 +173,35 @@ class EpubLayoutDiagnosisMixin:
             return None
         candidates = getattr(self, "diagnosis_session", None).spread_candidates()
         index = selection[0]
-        return candidates[index].candidate.pair_id if index < len(candidates) else None
+        return candidates[index].candidate if index < len(candidates) else None
+
+    def sync_spine_selection_from_candidate(self) -> None:
+        candidate = self._selected_spread_candidate()
+        if candidate is None or getattr(self, "model", None) is None:
+            return
+        source_to_entry = {
+            getattr(entry, "source_index", None): index
+            for index, entry in enumerate(self.model.entries)
+            if getattr(entry, "source_index", None) is not None and not getattr(entry, "is_blank", False)
+        }
+        indexes = tuple(
+            index
+            for index in (source_to_entry.get(candidate.start_page), source_to_entry.get(candidate.end_page))
+            if index is not None
+        )
+        if not indexes:
+            status = getattr(self, "status", None)
+            if status is not None:
+                status.set(f"Candidate {candidate.pair_id} is missing from the current layout.")
+            return
+        self._syncing_spine_selection = True
+        try:
+            self._set_main_selection_range(indexes)
+            self._set_diagnosis_selection_range(indexes)
+        finally:
+            self._syncing_spine_selection = False
+        self.refresh_preview()
+        self.refresh_diagnosis_preview()
 
     def _selected_insert_suggestion(self):
         classification = getattr(self, "insert_classification", None)
@@ -172,11 +230,13 @@ class EpubLayoutDiagnosisMixin:
             return
         project_root = Path(__file__).resolve().parents[2]
         output_dir = default_diagnosis_output_dir(project_root, self.pdf_path, "spread")
-        command = resolve_spread_scan_command(project_root, self.pdf_path, output_dir)
+        settings = getattr(self, "diagnosis_settings", DiagnosisSettings())
+        command = resolve_spread_scan_command(project_root, self.pdf_path, output_dir, settings)
         if command is None:
             messagebox.showerror(
                 "Spread scan unavailable",
-                "Could not find sibling manga-spread-continuity environment. Use Add Selected As Spread in the Diagnose window for manual review.",
+                "Could not find sibling manga-spread-continuity environment. "
+                "Use Add Selected As Spread in the Diagnose window for manual review.",
             )
             return
         self._run_background(
@@ -277,7 +337,8 @@ class EpubLayoutDiagnosisMixin:
             return
         project_root = Path(__file__).resolve().parents[2]
         output_dir = default_diagnosis_output_dir(project_root, self.pdf_path, "insert")
-        command = resolve_insert_score_command(project_root, self.pdf_path, output_dir)
+        settings = getattr(self, "diagnosis_settings", DiagnosisSettings())
+        command = resolve_insert_score_command(project_root, self.pdf_path, output_dir, settings)
         if command is None:
             messagebox.showerror(
                 "Insert scoring unavailable",
@@ -392,6 +453,25 @@ class EpubLayoutDiagnosisMixin:
         self._mark_diagnosis_stale(refresh_spine=True)
         self.refresh_preview_views()
 
+    def clear_current_diagnostics_output(self) -> None:
+        pdf_path = getattr(self, "pdf_path", None)
+        if pdf_path is None:
+            self.status.set("Open a PDF before clearing diagnostics output.")
+            return
+        project_root = Path(__file__).resolve().parents[2]
+        output_root = diagnosis_output_root_for_current_pdf(project_root, pdf_path)
+        if not output_root.exists():
+            self.status.set(f"No diagnostics output to clear for {Path(pdf_path).stem}.")
+            return
+        shutil.rmtree(output_root)
+        self.status.set(f"Cleared diagnostics output for {Path(pdf_path).stem}.")
+
+    def apply_diagnosis_settings(self, settings: DiagnosisSettings) -> None:
+        self.diagnosis_settings = settings
+        for panel in _diagnosis_panels(self):
+            panel.set_settings(settings)
+        self.status.set("Updated diagnosis settings.")
+
     def import_spread_candidates(self) -> None:
         path = filedialog.askopenfilename(
             title="Import spread candidates",
@@ -419,6 +499,8 @@ class EpubLayoutDiagnosisMixin:
 
 def initialize_diagnosis_state(app, source_page_count: int = 0) -> None:
     app.diagnosis_session = DiagnosisSession(source_page_count)
+    if not hasattr(app, "diagnosis_settings"):
+        app.diagnosis_settings = DiagnosisSettings()
     app.spread_damage = []
     app.insert_candidates = []
     app.insert_classification = None
@@ -427,6 +509,10 @@ def initialize_diagnosis_state(app, source_page_count: int = 0) -> None:
     app.diagnosis_window = None
     app.spine_markers = {}
     app._syncing_spine_selection = False
+
+
+def diagnosis_output_root_for_current_pdf(project_root: Path, pdf_path: Path) -> Path:
+    return default_diagnosis_output_dir(project_root, pdf_path, "spread").parent
 
 
 def reset_diagnosis_for_model(app, model) -> None:
@@ -445,7 +531,11 @@ def build_diagnosis_tab(app, parent) -> None:
     if not hasattr(parent, "tk"):
         app.diagnosis_panel = None
         return
-    app.diagnosis_panel = DiagnosisPanel(parent, diagnosis_callbacks(app))
+    app.diagnosis_panel = DiagnosisPanel(
+        parent,
+        diagnosis_callbacks(app),
+        getattr(app, "diagnosis_settings", DiagnosisSettings()),
+    )
     refresh_diagnosis_panel(app)
 
 
@@ -456,6 +546,7 @@ def build_diagnosis_entry_tab(app, parent) -> None:
 def diagnosis_callbacks(app) -> DiagnosisPanelCallbacks:
     return DiagnosisPanelCallbacks(
         run_spread_diagnosis=app.run_spread_diagnosis,
+        sync_spine_selection_from_candidate=app.sync_spine_selection_from_candidate,
         mark_selected_spread_true=app.mark_selected_spread_true,
         mark_selected_spread_false=app.mark_selected_spread_false,
         add_selected_spread=app.add_selected_spread_from_diagnosis_spine,
@@ -464,6 +555,8 @@ def diagnosis_callbacks(app) -> DiagnosisPanelCallbacks:
         import_insert_scores=app.import_insert_scores,
         insert_selected_diagnosis_blank=app.insert_selected_diagnosis_blank,
         recheck_diagnosis_layout=app.recheck_diagnosis_layout,
+        apply_settings=app.apply_diagnosis_settings,
+        clear_diagnostics_output=app.clear_current_diagnostics_output,
     )
 
 
@@ -483,9 +576,19 @@ def refresh_diagnosis_panel(app) -> None:
         panel.damage_var.set(summary.damage)
         panel.insert_var.set(summary.insert_points)
         panel.stale_var.set(summary.staleness)
-        _replace_list_preserving_yview(panel.candidate_list, [_candidate_row(item) for item in session.spread_candidates()])
-        _replace_list_preserving_yview(panel.damage_list, [_damage_row(item) for item in getattr(app, "spread_damage", [])])
-        _replace_list_preserving_yview(panel.insert_list, _insert_rows(getattr(app, "insert_classification", None)))
+        _set_panel_rows(
+            panel,
+            "candidate",
+            panel.candidate_list,
+            [_candidate_row(item) for item in session.spread_candidates()],
+        )
+        _set_panel_rows(
+            panel,
+            "damage",
+            panel.damage_list,
+            [_damage_row(item) for item in getattr(app, "spread_damage", [])],
+        )
+        _set_panel_rows(panel, "insert", panel.insert_list, _insert_rows(getattr(app, "insert_classification", None)))
 
 
 def _diagnosis_panels(app) -> list[DiagnosisPanel]:
@@ -514,6 +617,14 @@ def _restore_listbox_selection(listbox, selection: tuple[int, ...], entry_count:
         return
     for index in selection:
         listbox.selection_set(min(index, entry_count - 1))
+
+
+def _set_panel_rows(panel, name: str, listbox, rows: list[str]) -> None:
+    setter = getattr(panel, f"set_{name}_rows", None)
+    if setter is not None:
+        setter(rows)
+    elif listbox is not None:
+        _replace_list_preserving_yview(listbox, rows)
 
 
 def _replace_list_preserving_yview(listbox, rows: list[str]) -> None:

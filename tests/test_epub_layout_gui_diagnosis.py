@@ -1,5 +1,6 @@
 import unittest
 import tempfile
+import tkinter as tk
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -11,10 +12,12 @@ from manga_pdf_to_epub.epub_layout_diagnosis import (
     classify_insert_points,
     diagnose_spread_damage,
 )
+from manga_pdf_to_epub.epub_layout_diagnosis_runner import DiagnosisSettings
 from manga_pdf_to_epub.epub_layout_gui import EpubLayoutApp
 from manga_pdf_to_epub.epub_layout_diagnosis_controller import (
     _run_insert_scoring_work,
     _run_spread_scan_work,
+    diagnosis_output_root_for_current_pdf,
     reset_diagnosis_for_model,
 )
 from manga_pdf_to_epub.epub_layout_diagnosis_gui import (
@@ -28,6 +31,54 @@ from tests.gui_helpers import FakeCanvas, FakeDeleteModel, FakeListbox
 
 def page(source_index: int):
     return SimpleNamespace(label=f"Page {source_index}", source_index=source_index, is_blank=False)
+
+
+class FakeTkWidget:
+    def __init__(self, *args, **kwargs):
+        self.parent = args[0] if args else None
+        self.options = kwargs
+        self.items = []
+        self.current_yview = (0.0, 0.0)
+        self.moved_to = None
+        self.bindings = {}
+        self.pack_calls = []
+        self.pack_forget_count = 0
+        self.place_calls = []
+        self.raised = False
+
+    def delete(self, *_args):
+        self.items.clear()
+
+    def insert(self, _where, value):
+        self.items.append(value)
+
+    def yview(self):
+        return self.current_yview
+
+    def yview_moveto(self, fraction):
+        self.moved_to = fraction
+        self.current_yview = (fraction, fraction)
+
+    def bind(self, sequence, callback):
+        self.bindings[sequence] = callback
+
+    def pack(self, *args, **kwargs):
+        self.pack_calls.append((args, kwargs))
+
+    def pack_forget(self):
+        self.pack_forget_count += 1
+
+    def pack_propagate(self, *_args, **_kwargs):
+        pass
+
+    def place(self, *args, **kwargs):
+        self.place_calls.append((args, kwargs))
+
+    def tkraise(self, *_args, **_kwargs):
+        self.raised = True
+
+    def configure(self, **kwargs):
+        self.options.update(kwargs)
 
 
 class DiagnosisGuiTextTests(unittest.TestCase):
@@ -67,6 +118,7 @@ class DiagnosisPanelTests(unittest.TestCase):
         self.assertEqual(
             [
                 "run_spread_diagnosis",
+                "sync_spine_selection_from_candidate",
                 "mark_selected_spread_true",
                 "mark_selected_spread_false",
                 "add_selected_spread",
@@ -75,6 +127,8 @@ class DiagnosisPanelTests(unittest.TestCase):
                 "import_insert_scores",
                 "insert_selected_diagnosis_blank",
                 "recheck_diagnosis_layout",
+                "apply_settings",
+                "clear_diagnostics_output",
             ],
             list(DiagnosisPanelCallbacks.__dataclass_fields__),
         )
@@ -90,6 +144,7 @@ class DiagnosisPanelTests(unittest.TestCase):
 
         callbacks = DiagnosisPanelCallbacks(
             run_spread_diagnosis=callback("scan"),
+            sync_spine_selection_from_candidate=callback("candidate_select"),
             mark_selected_spread_true=callback("true"),
             mark_selected_spread_false=callback("false"),
             add_selected_spread=callback("manual"),
@@ -98,6 +153,8 @@ class DiagnosisPanelTests(unittest.TestCase):
             import_insert_scores=callback("import_scores"),
             insert_selected_diagnosis_blank=callback("insert"),
             recheck_diagnosis_layout=callback("recheck"),
+            apply_settings=lambda settings: calls.append(("settings", settings)),
+            clear_diagnostics_output=callback("clear_cache"),
         )
 
         class FakeStringVar:
@@ -111,34 +168,453 @@ class DiagnosisPanelTests(unittest.TestCase):
             def get(self):
                 return self.value
 
-        class FakeWidget:
-            def __init__(self, *args, **kwargs):
-                self.parent = args[0] if args else None
-                self.options = kwargs
-
-            def pack(self, *_args, **_kwargs):
-                pass
-
-        class FakeButton(FakeWidget):
+        class FakeButton(FakeTkWidget):
             def __init__(self, *args, **kwargs):
                 super().__init__(*args, **kwargs)
                 buttons.append(self)
 
-        with patch("manga_pdf_to_epub.epub_layout_diagnosis_gui.tk.StringVar", FakeStringVar), \
-            patch("manga_pdf_to_epub.epub_layout_diagnosis_gui.tk.Listbox", FakeWidget), \
-            patch("manga_pdf_to_epub.epub_layout_diagnosis_gui.ttk.Label", FakeWidget), \
-            patch("manga_pdf_to_epub.epub_layout_diagnosis_gui.ttk.Button", FakeButton), \
-            patch("manga_pdf_to_epub.epub_layout_diagnosis_gui.ttk.Separator", FakeWidget):
-            DiagnosisPanel(parent, callbacks)
+        class FakeNotebook(FakeTkWidget):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                self.tabs = []
 
-        self.assertEqual([parent, parent, parent, parent], [kwargs.get("master") for kwargs in string_var_kwargs])
+            def add(self, child, **kwargs):
+                self.tabs.append((child, kwargs.get("text")))
+
+        with patch("manga_pdf_to_epub.epub_layout_diagnosis_gui.tk.StringVar", FakeStringVar), \
+            patch("manga_pdf_to_epub.epub_layout_diagnosis_gui.tk.Listbox", FakeTkWidget), \
+            patch("manga_pdf_to_epub.epub_layout_diagnosis_gui.ttk.Label", FakeTkWidget), \
+            patch("manga_pdf_to_epub.epub_layout_diagnosis_gui.ttk.Button", FakeButton), \
+            patch("manga_pdf_to_epub.epub_layout_diagnosis_gui.ttk.Entry", FakeTkWidget), \
+            patch("manga_pdf_to_epub.epub_layout_diagnosis_gui.ttk.Frame", FakeTkWidget), \
+            patch("manga_pdf_to_epub.epub_layout_diagnosis_gui.ttk.Notebook", FakeNotebook), \
+            patch("manga_pdf_to_epub.epub_layout_diagnosis_gui.ttk.Separator", FakeTkWidget):
+            panel = DiagnosisPanel(parent, callbacks)
+            panel._show_workflow_tab("Insert Points")
+            panel._show_workflow_tab("Settings")
+
+        self.assertEqual(9, len(string_var_kwargs))
+        self.assertTrue(all(kwargs.get("master") is parent for kwargs in string_var_kwargs))
         button_by_text = {button.options["text"]: button for button in buttons}
 
         button_by_text["Run Cross-Page Scan"].options["command"]()
         button_by_text["Recheck Layout"].options["command"]()
         button_by_text["Add Selected As Spread"].options["command"]()
+        button_by_text["Clear Current Diagnostics Output"].options["command"]()
+        panel.candidate_list.bindings["<<ListboxSelect>>"](None)
 
-        self.assertEqual(["scan", "recheck", "manual"], calls)
+        self.assertEqual(["scan", "recheck", "manual", "clear_cache", "candidate_select"], calls)
+
+    def test_panel_uses_main_window_style_workflow_tabs(self):
+        buttons = []
+        parent = object()
+
+        class FakeVar:
+            def __init__(self, *_args, **kwargs):
+                self.value = kwargs.get("value", "")
+
+            def set(self, value):
+                self.value = value
+
+            def get(self):
+                return self.value
+
+        class StrictFakeWidget(FakeTkWidget):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+
+            def place(self, *args, **kwargs):
+                raise AssertionError("Workflow tab panes should not be stacked with place.")
+
+            def tkraise(self, *_args, **_kwargs):
+                raise AssertionError("Workflow tab panes should not rely on tkraise.")
+
+        class FakeButton(StrictFakeWidget):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                buttons.append(self)
+
+        callbacks = DiagnosisPanelCallbacks(
+            run_spread_diagnosis=lambda: None,
+            sync_spine_selection_from_candidate=lambda: None,
+            mark_selected_spread_true=lambda: None,
+            mark_selected_spread_false=lambda: None,
+            add_selected_spread=lambda: None,
+            check_confirmed_spread_damage=lambda: None,
+            run_insert_point_scoring=lambda: None,
+            import_insert_scores=lambda: None,
+            insert_selected_diagnosis_blank=lambda: None,
+            recheck_diagnosis_layout=lambda: None,
+            apply_settings=lambda _settings: None,
+            clear_diagnostics_output=lambda: None,
+        )
+
+        with patch("manga_pdf_to_epub.epub_layout_diagnosis_gui.tk.StringVar", FakeVar), \
+            patch("manga_pdf_to_epub.epub_layout_diagnosis_gui.tk.Listbox", StrictFakeWidget), \
+            patch("manga_pdf_to_epub.epub_layout_diagnosis_gui.ttk.Label", StrictFakeWidget), \
+            patch("manga_pdf_to_epub.epub_layout_diagnosis_gui.ttk.Button", FakeButton), \
+            patch("manga_pdf_to_epub.epub_layout_diagnosis_gui.ttk.Entry", StrictFakeWidget), \
+            patch("manga_pdf_to_epub.epub_layout_diagnosis_gui.ttk.Frame", StrictFakeWidget), \
+            patch("manga_pdf_to_epub.epub_layout_diagnosis_gui.ttk.Notebook", side_effect=AssertionError("Notebook should not be used")), \
+            patch("manga_pdf_to_epub.epub_layout_diagnosis_gui.ttk.Separator", StrictFakeWidget):
+            panel = DiagnosisPanel(parent, callbacks)
+
+            tab_buttons = buttons[:4]
+            self.assertEqual(["Candidates", "Damage", "Insert Points", "Settings"], [button.options["text"] for button in tab_buttons])
+            self.assertTrue(all(button.pack_calls[-1][1] == {"side": tk.LEFT, "fill": tk.X, "expand": True, "padx": 3} for button in tab_buttons))
+            self.assertEqual("disabled", tab_buttons[0].options["state"])
+            self.assertEqual("normal", tab_buttons[1].options["state"])
+            self.assertEqual(1, len(panel.workflow_tabs["Candidates"].pack_calls))
+            self.assertEqual(1, panel.workflow_tabs["Damage"].pack_forget_count)
+
+            tab_buttons[3].options["command"]()
+
+            self.assertEqual("Settings", panel.active_workflow_tab)
+            self.assertEqual("normal", tab_buttons[0].options["state"])
+            self.assertEqual("disabled", tab_buttons[3].options["state"])
+            self.assertEqual(1, panel.workflow_tabs["Candidates"].pack_forget_count)
+            self.assertEqual(1, len(panel.workflow_tabs["Settings"].pack_calls))
+
+    def test_panel_builds_only_visible_workflow_tab_content(self):
+        listboxes = []
+        parent = object()
+
+        class FakeVar:
+            def __init__(self, *_args, **kwargs):
+                self.value = kwargs.get("value", "")
+
+            def set(self, value):
+                self.value = value
+
+            def get(self):
+                return self.value
+
+        class FakeListbox(FakeTkWidget):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                listboxes.append(self)
+
+        callbacks = DiagnosisPanelCallbacks(
+            run_spread_diagnosis=lambda: None,
+            sync_spine_selection_from_candidate=lambda: None,
+            mark_selected_spread_true=lambda: None,
+            mark_selected_spread_false=lambda: None,
+            add_selected_spread=lambda: None,
+            check_confirmed_spread_damage=lambda: None,
+            run_insert_point_scoring=lambda: None,
+            import_insert_scores=lambda: None,
+            insert_selected_diagnosis_blank=lambda: None,
+            recheck_diagnosis_layout=lambda: None,
+            apply_settings=lambda _settings: None,
+            clear_diagnostics_output=lambda: None,
+        )
+
+        with patch("manga_pdf_to_epub.epub_layout_diagnosis_gui.tk.StringVar", FakeVar), \
+            patch("manga_pdf_to_epub.epub_layout_diagnosis_gui.tk.Listbox", FakeListbox), \
+            patch("manga_pdf_to_epub.epub_layout_diagnosis_gui.ttk.Label", FakeTkWidget), \
+            patch("manga_pdf_to_epub.epub_layout_diagnosis_gui.ttk.Button", FakeTkWidget), \
+            patch("manga_pdf_to_epub.epub_layout_diagnosis_gui.ttk.Entry", FakeTkWidget), \
+            patch("manga_pdf_to_epub.epub_layout_diagnosis_gui.ttk.Frame", FakeTkWidget), \
+            patch("manga_pdf_to_epub.epub_layout_diagnosis_gui.ttk.Notebook", side_effect=AssertionError("Notebook should not be used")), \
+            patch("manga_pdf_to_epub.epub_layout_diagnosis_gui.ttk.Separator", FakeTkWidget):
+            panel = DiagnosisPanel(parent, callbacks)
+
+            self.assertEqual(1, len(listboxes))
+            self.assertIsNotNone(panel.candidate_list)
+            self.assertIsNone(panel.damage_list)
+            self.assertIsNone(panel.insert_list)
+
+            panel._show_workflow_tab("Damage")
+
+            self.assertEqual(2, len(listboxes))
+            self.assertIs(panel.workflow_tabs["Damage"], panel.damage_list.parent)
+            self.assertIsNone(panel.insert_list)
+
+    def test_panel_listboxes_belong_to_their_workflow_tabs(self):
+        parent = object()
+
+        class FakeVar:
+            def __init__(self, *_args, **kwargs):
+                self.value = kwargs.get("value", "")
+
+            def set(self, value):
+                self.value = value
+
+            def get(self):
+                return self.value
+
+        callbacks = DiagnosisPanelCallbacks(
+            run_spread_diagnosis=lambda: None,
+            sync_spine_selection_from_candidate=lambda: None,
+            mark_selected_spread_true=lambda: None,
+            mark_selected_spread_false=lambda: None,
+            add_selected_spread=lambda: None,
+            check_confirmed_spread_damage=lambda: None,
+            run_insert_point_scoring=lambda: None,
+            import_insert_scores=lambda: None,
+            insert_selected_diagnosis_blank=lambda: None,
+            recheck_diagnosis_layout=lambda: None,
+            apply_settings=lambda _settings: None,
+            clear_diagnostics_output=lambda: None,
+        )
+
+        with patch("manga_pdf_to_epub.epub_layout_diagnosis_gui.tk.StringVar", FakeVar), \
+            patch("manga_pdf_to_epub.epub_layout_diagnosis_gui.tk.Listbox", FakeTkWidget), \
+            patch("manga_pdf_to_epub.epub_layout_diagnosis_gui.ttk.Label", FakeTkWidget), \
+            patch("manga_pdf_to_epub.epub_layout_diagnosis_gui.ttk.Button", FakeTkWidget), \
+            patch("manga_pdf_to_epub.epub_layout_diagnosis_gui.ttk.Entry", FakeTkWidget), \
+            patch("manga_pdf_to_epub.epub_layout_diagnosis_gui.ttk.Frame", FakeTkWidget), \
+            patch("manga_pdf_to_epub.epub_layout_diagnosis_gui.ttk.Notebook", side_effect=AssertionError("Notebook should not be used")), \
+            patch("manga_pdf_to_epub.epub_layout_diagnosis_gui.ttk.Separator", FakeTkWidget):
+            panel = DiagnosisPanel(parent, callbacks)
+
+            panel._show_workflow_tab("Damage")
+            panel._show_workflow_tab("Insert Points")
+
+            self.assertIs(panel.workflow_tabs["Candidates"], panel.candidate_list.parent)
+            self.assertIs(panel.workflow_tabs["Damage"], panel.damage_list.parent)
+            self.assertIs(panel.workflow_tabs["Insert Points"], panel.insert_list.parent)
+
+    def test_panel_listboxes_keep_buttons_visible_in_workflow_tabs(self):
+        parent = object()
+
+        class FakeVar:
+            def __init__(self, *_args, **kwargs):
+                self.value = kwargs.get("value", "")
+
+            def set(self, value):
+                self.value = value
+
+            def get(self):
+                return self.value
+
+        callbacks = DiagnosisPanelCallbacks(
+            run_spread_diagnosis=lambda: None,
+            sync_spine_selection_from_candidate=lambda: None,
+            mark_selected_spread_true=lambda: None,
+            mark_selected_spread_false=lambda: None,
+            add_selected_spread=lambda: None,
+            check_confirmed_spread_damage=lambda: None,
+            run_insert_point_scoring=lambda: None,
+            import_insert_scores=lambda: None,
+            insert_selected_diagnosis_blank=lambda: None,
+            recheck_diagnosis_layout=lambda: None,
+            apply_settings=lambda _settings: None,
+            clear_diagnostics_output=lambda: None,
+        )
+
+        with patch("manga_pdf_to_epub.epub_layout_diagnosis_gui.tk.StringVar", FakeVar), \
+            patch("manga_pdf_to_epub.epub_layout_diagnosis_gui.tk.Listbox", FakeTkWidget), \
+            patch("manga_pdf_to_epub.epub_layout_diagnosis_gui.ttk.Label", FakeTkWidget), \
+            patch("manga_pdf_to_epub.epub_layout_diagnosis_gui.ttk.Button", FakeTkWidget), \
+            patch("manga_pdf_to_epub.epub_layout_diagnosis_gui.ttk.Entry", FakeTkWidget), \
+            patch("manga_pdf_to_epub.epub_layout_diagnosis_gui.ttk.Frame", FakeTkWidget), \
+            patch("manga_pdf_to_epub.epub_layout_diagnosis_gui.ttk.Notebook", side_effect=AssertionError("Notebook should not be used")), \
+            patch("manga_pdf_to_epub.epub_layout_diagnosis_gui.ttk.Separator", FakeTkWidget):
+            panel = DiagnosisPanel(parent, callbacks)
+
+            panel._show_workflow_tab("Damage")
+            self.assertNotIn("expand", panel.damage_list.pack_calls[-1][1])
+            panel._show_workflow_tab("Insert Points")
+            self.assertNotIn("expand", panel.insert_list.pack_calls[-1][1])
+
+    def test_panel_candidate_list_expands_for_long_scan_results(self):
+        parent = object()
+
+        class FakeVar:
+            def __init__(self, *_args, **kwargs):
+                self.value = kwargs.get("value", "")
+
+            def set(self, value):
+                self.value = value
+
+            def get(self):
+                return self.value
+
+        callbacks = DiagnosisPanelCallbacks(
+            run_spread_diagnosis=lambda: None,
+            sync_spine_selection_from_candidate=lambda: None,
+            mark_selected_spread_true=lambda: None,
+            mark_selected_spread_false=lambda: None,
+            add_selected_spread=lambda: None,
+            check_confirmed_spread_damage=lambda: None,
+            run_insert_point_scoring=lambda: None,
+            import_insert_scores=lambda: None,
+            insert_selected_diagnosis_blank=lambda: None,
+            recheck_diagnosis_layout=lambda: None,
+            apply_settings=lambda _settings: None,
+            clear_diagnostics_output=lambda: None,
+        )
+
+        with patch("manga_pdf_to_epub.epub_layout_diagnosis_gui.tk.StringVar", FakeVar), \
+            patch("manga_pdf_to_epub.epub_layout_diagnosis_gui.tk.Listbox", FakeTkWidget), \
+            patch("manga_pdf_to_epub.epub_layout_diagnosis_gui.ttk.Label", FakeTkWidget), \
+            patch("manga_pdf_to_epub.epub_layout_diagnosis_gui.ttk.Button", FakeTkWidget), \
+            patch("manga_pdf_to_epub.epub_layout_diagnosis_gui.ttk.Entry", FakeTkWidget), \
+            patch("manga_pdf_to_epub.epub_layout_diagnosis_gui.ttk.Frame", FakeTkWidget), \
+            patch("manga_pdf_to_epub.epub_layout_diagnosis_gui.ttk.Notebook", side_effect=AssertionError("Notebook should not be used")), \
+            patch("manga_pdf_to_epub.epub_layout_diagnosis_gui.ttk.Separator", FakeTkWidget):
+            panel = DiagnosisPanel(parent, callbacks)
+
+            self.assertGreaterEqual(panel.candidate_list.options["height"], 14)
+            self.assertEqual({"fill": tk.BOTH, "expand": True, "pady": (6, 0)}, panel.candidate_list.pack_calls[-1][1])
+
+    def test_panel_initializes_settings_from_current_app_settings(self):
+        parent = object()
+        settings = DiagnosisSettings(
+            spread_workers=7,
+            spread_threshold=0.72,
+            spread_debug_limit=18,
+            spread_max_height=1500,
+            insert_thumb_height=640,
+        )
+
+        class FakeVar:
+            def __init__(self, *_args, **kwargs):
+                self.value = kwargs.get("value", "")
+
+            def set(self, value):
+                self.value = value
+
+            def get(self):
+                return self.value
+
+        class FakeNotebook(FakeTkWidget):
+            def add(self, *_args, **_kwargs):
+                pass
+
+        callbacks = DiagnosisPanelCallbacks(
+            run_spread_diagnosis=lambda: None,
+            sync_spine_selection_from_candidate=lambda: None,
+            mark_selected_spread_true=lambda: None,
+            mark_selected_spread_false=lambda: None,
+            add_selected_spread=lambda: None,
+            check_confirmed_spread_damage=lambda: None,
+            run_insert_point_scoring=lambda: None,
+            import_insert_scores=lambda: None,
+            insert_selected_diagnosis_blank=lambda: None,
+            recheck_diagnosis_layout=lambda: None,
+            apply_settings=lambda _settings: None,
+            clear_diagnostics_output=lambda: None,
+        )
+
+        with patch("manga_pdf_to_epub.epub_layout_diagnosis_gui.tk.StringVar", FakeVar), \
+            patch("manga_pdf_to_epub.epub_layout_diagnosis_gui.tk.Listbox", FakeTkWidget), \
+            patch("manga_pdf_to_epub.epub_layout_diagnosis_gui.ttk.Label", FakeTkWidget), \
+            patch("manga_pdf_to_epub.epub_layout_diagnosis_gui.ttk.Button", FakeTkWidget), \
+            patch("manga_pdf_to_epub.epub_layout_diagnosis_gui.ttk.Entry", FakeTkWidget), \
+            patch("manga_pdf_to_epub.epub_layout_diagnosis_gui.ttk.Frame", FakeTkWidget), \
+            patch("manga_pdf_to_epub.epub_layout_diagnosis_gui.ttk.Notebook", FakeNotebook), \
+            patch("manga_pdf_to_epub.epub_layout_diagnosis_gui.ttk.Separator", FakeTkWidget):
+            panel = DiagnosisPanel(parent, callbacks, settings)
+
+        self.assertEqual("7", panel.workers_var.get())
+        self.assertEqual("0.72", panel.threshold_var.get())
+        self.assertEqual("18", panel.debug_limit_var.get())
+        self.assertEqual("1500", panel.max_height_var.get())
+        self.assertEqual("640", panel.insert_thumb_height_var.get())
+
+    def test_panel_default_summary_points_to_scan_or_spine_selection(self):
+        parent = object()
+
+        class FakeVar:
+            def __init__(self, *_args, **kwargs):
+                self.value = kwargs.get("value", "")
+
+            def set(self, value):
+                self.value = value
+
+            def get(self):
+                return self.value
+
+        class FakeNotebook(FakeTkWidget):
+            def add(self, *_args, **_kwargs):
+                pass
+
+        callbacks = DiagnosisPanelCallbacks(
+            run_spread_diagnosis=lambda: None,
+            sync_spine_selection_from_candidate=lambda: None,
+            mark_selected_spread_true=lambda: None,
+            mark_selected_spread_false=lambda: None,
+            add_selected_spread=lambda: None,
+            check_confirmed_spread_damage=lambda: None,
+            run_insert_point_scoring=lambda: None,
+            import_insert_scores=lambda: None,
+            insert_selected_diagnosis_blank=lambda: None,
+            recheck_diagnosis_layout=lambda: None,
+            apply_settings=lambda _settings: None,
+            clear_diagnostics_output=lambda: None,
+        )
+
+        with patch("manga_pdf_to_epub.epub_layout_diagnosis_gui.tk.StringVar", FakeVar), \
+            patch("manga_pdf_to_epub.epub_layout_diagnosis_gui.tk.Listbox", FakeTkWidget), \
+            patch("manga_pdf_to_epub.epub_layout_diagnosis_gui.ttk.Label", FakeTkWidget), \
+            patch("manga_pdf_to_epub.epub_layout_diagnosis_gui.ttk.Button", FakeTkWidget), \
+            patch("manga_pdf_to_epub.epub_layout_diagnosis_gui.ttk.Entry", FakeTkWidget), \
+            patch("manga_pdf_to_epub.epub_layout_diagnosis_gui.ttk.Frame", FakeTkWidget), \
+            patch("manga_pdf_to_epub.epub_layout_diagnosis_gui.ttk.Notebook", FakeNotebook), \
+            patch("manga_pdf_to_epub.epub_layout_diagnosis_gui.ttk.Separator", FakeTkWidget):
+            panel = DiagnosisPanel(parent, callbacks)
+
+        self.assertNotIn("import spread", panel.summary_var.get().lower())
+        self.assertIn("Spine order", panel.summary_var.get())
+
+    def test_panel_settings_apply_validates_and_calls_callback(self):
+        received = []
+        panel = DiagnosisPanel.__new__(DiagnosisPanel)
+        panel.callbacks = SimpleNamespace(apply_settings=lambda settings: received.append(settings))
+        panel.workers_var = SimpleNamespace(get=lambda: "6")
+        panel.threshold_var = SimpleNamespace(get=lambda: "0.61")
+        panel.debug_limit_var = SimpleNamespace(get=lambda: "12")
+        panel.max_height_var = SimpleNamespace(get=lambda: "1400")
+        panel.insert_thumb_height_var = SimpleNamespace(get=lambda: "800")
+
+        panel.apply_settings()
+
+        self.assertEqual(
+            DiagnosisSettings(
+                spread_workers=6,
+                spread_threshold=0.61,
+                spread_debug_limit=12,
+                spread_max_height=1400,
+                insert_thumb_height=800,
+            ),
+            received[0],
+        )
+
+    def test_panel_settings_apply_reports_invalid_input_without_callback(self):
+        received = []
+        panel = DiagnosisPanel.__new__(DiagnosisPanel)
+        panel.callbacks = SimpleNamespace(apply_settings=lambda settings: received.append(settings))
+        panel.workers_var = SimpleNamespace(get=lambda: "many")
+        panel.threshold_var = SimpleNamespace(get=lambda: "0.61")
+        panel.debug_limit_var = SimpleNamespace(get=lambda: "12")
+        panel.max_height_var = SimpleNamespace(get=lambda: "1400")
+        panel.insert_thumb_height_var = SimpleNamespace(get=lambda: "800")
+
+        with patch("manga_pdf_to_epub.epub_layout_diagnosis_gui.messagebox.showerror") as showerror:
+            panel.apply_settings()
+
+        self.assertEqual([], received)
+        self.assertEqual("Diagnosis Settings", showerror.call_args.args[0])
+        self.assertIn("numeric", showerror.call_args.args[1])
+
+    def test_panel_settings_apply_reports_out_of_range_input_without_callback(self):
+        received = []
+        panel = DiagnosisPanel.__new__(DiagnosisPanel)
+        panel.callbacks = SimpleNamespace(apply_settings=lambda settings: received.append(settings))
+        panel.workers_var = SimpleNamespace(get=lambda: "0")
+        panel.threshold_var = SimpleNamespace(get=lambda: "0.61")
+        panel.debug_limit_var = SimpleNamespace(get=lambda: "12")
+        panel.max_height_var = SimpleNamespace(get=lambda: "1400")
+        panel.insert_thumb_height_var = SimpleNamespace(get=lambda: "800")
+
+        with patch("manga_pdf_to_epub.epub_layout_diagnosis_gui.messagebox.showerror") as showerror:
+            panel.apply_settings()
+
+        self.assertEqual([], received)
+        self.assertEqual("Diagnosis Settings", showerror.call_args.args[0])
+        self.assertIn("workers", showerror.call_args.args[1])
 
 
 class DiagnosisImportUxTests(unittest.TestCase):
@@ -168,20 +644,18 @@ class DiagnosisImportUxTests(unittest.TestCase):
             def set(self, value):
                 self.value = value
 
-        class FakeWidget:
-            def __init__(self, *args, **kwargs):
-                self.options = kwargs
-
-            def pack(self, *_args, **_kwargs):
-                pass
-
-        class FakeButton(FakeWidget):
+        class FakeButton(FakeTkWidget):
             def __init__(self, *args, **kwargs):
                 super().__init__(*args, **kwargs)
                 labels.append(kwargs.get("text"))
 
+        class FakeNotebook(FakeTkWidget):
+            def add(self, *_args, **_kwargs):
+                pass
+
         callbacks = DiagnosisPanelCallbacks(
             run_spread_diagnosis=lambda: None,
+            sync_spine_selection_from_candidate=lambda: None,
             mark_selected_spread_true=lambda: None,
             mark_selected_spread_false=lambda: None,
             add_selected_spread=lambda: None,
@@ -190,16 +664,100 @@ class DiagnosisImportUxTests(unittest.TestCase):
             import_insert_scores=lambda: None,
             insert_selected_diagnosis_blank=lambda: None,
             recheck_diagnosis_layout=lambda: None,
+            apply_settings=lambda _settings: None,
+            clear_diagnostics_output=lambda: None,
         )
         with patch("manga_pdf_to_epub.epub_layout_diagnosis_gui.tk.StringVar", FakeStringVar), \
-            patch("manga_pdf_to_epub.epub_layout_diagnosis_gui.tk.Listbox", FakeWidget), \
-            patch("manga_pdf_to_epub.epub_layout_diagnosis_gui.ttk.Label", FakeWidget), \
+            patch("manga_pdf_to_epub.epub_layout_diagnosis_gui.tk.Listbox", FakeTkWidget), \
+            patch("manga_pdf_to_epub.epub_layout_diagnosis_gui.ttk.Label", FakeTkWidget), \
             patch("manga_pdf_to_epub.epub_layout_diagnosis_gui.ttk.Button", FakeButton), \
-            patch("manga_pdf_to_epub.epub_layout_diagnosis_gui.ttk.Separator", FakeWidget):
+            patch("manga_pdf_to_epub.epub_layout_diagnosis_gui.ttk.Entry", FakeTkWidget), \
+            patch("manga_pdf_to_epub.epub_layout_diagnosis_gui.ttk.Frame", FakeTkWidget), \
+            patch("manga_pdf_to_epub.epub_layout_diagnosis_gui.ttk.Notebook", FakeNotebook), \
+            patch("manga_pdf_to_epub.epub_layout_diagnosis_gui.ttk.Separator", FakeTkWidget):
             DiagnosisPanel(parent, callbacks)
 
         self.assertNotIn("Import Spread Candidates...", labels)
         self.assertIn("Add Selected As Spread", labels)
+
+
+class DiagnosisSettingsTests(unittest.TestCase):
+    def test_diagnosis_state_initializes_default_settings(self):
+        app = EpubLayoutApp.__new__(EpubLayoutApp)
+
+        from manga_pdf_to_epub.epub_layout_diagnosis_controller import initialize_diagnosis_state
+
+        initialize_diagnosis_state(app, source_page_count=10)
+
+        self.assertEqual(4, app.diagnosis_settings.spread_workers)
+        self.assertEqual(0.53, app.diagnosis_settings.spread_threshold)
+
+    def test_run_spread_diagnosis_passes_current_settings(self):
+        app = EpubLayoutApp.__new__(EpubLayoutApp)
+        app.model = SimpleNamespace(entries=[page(1), page(2)])
+        app.pdf_path = Path("/tmp/book.pdf")
+        app.diagnosis_session = DiagnosisSession(source_page_count=2)
+        app.diagnosis_settings = SimpleNamespace(spread_workers=6)
+        app._run_background = lambda *_args, **_kwargs: setattr(app, "background_started", True)
+
+        with patch("manga_pdf_to_epub.epub_layout_diagnosis_controller.resolve_spread_scan_command") as resolve:
+            resolve.return_value = SimpleNamespace()
+            app.run_spread_diagnosis()
+
+        self.assertIs(app.diagnosis_settings, resolve.call_args.args[3])
+        self.assertTrue(app.background_started)
+
+    def test_apply_diagnosis_settings_updates_open_panels(self):
+        app = EpubLayoutApp.__new__(EpubLayoutApp)
+        settings = DiagnosisSettings(spread_workers=5)
+        received = []
+        app.status = SimpleNamespace(set=lambda value: setattr(app, "status_value", value))
+        app.diagnosis_panel = SimpleNamespace(set_settings=lambda value: received.append(("main", value)))
+        app.diagnosis_window = SimpleNamespace(
+            panel=SimpleNamespace(set_settings=lambda value: received.append(("window", value)))
+        )
+
+        app.apply_diagnosis_settings(settings)
+
+        self.assertIs(settings, app.diagnosis_settings)
+        self.assertEqual([("main", settings), ("window", settings)], received)
+        self.assertEqual("Updated diagnosis settings.", app.status_value)
+
+    def test_clear_current_diagnostics_removes_current_pdf_output_root(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            app = EpubLayoutApp.__new__(EpubLayoutApp)
+            app.pdf_path = Path(tmp) / "book.pdf"
+            app.status = SimpleNamespace(set=lambda value: setattr(app, "status_value", value))
+            output_root = Path(tmp) / "diagnostics" / "book"
+            (output_root / "spread").mkdir(parents=True)
+            (output_root / "spread" / "scores.csv").write_text("old", encoding="utf-8")
+
+            with patch(
+                "manga_pdf_to_epub.epub_layout_diagnosis_controller.diagnosis_output_root_for_current_pdf",
+                return_value=output_root,
+            ):
+                app.clear_current_diagnostics_output()
+
+            self.assertFalse(output_root.exists())
+            self.assertEqual("Cleared diagnostics output for book.", app.status_value)
+
+    def test_clear_current_diagnostics_reports_when_no_cache_exists(self):
+        app = EpubLayoutApp.__new__(EpubLayoutApp)
+        app.pdf_path = Path("/tmp/book.pdf")
+        app.status = SimpleNamespace(set=lambda value: setattr(app, "status_value", value))
+
+        with tempfile.TemporaryDirectory() as tmp, patch(
+            "manga_pdf_to_epub.epub_layout_diagnosis_controller.diagnosis_output_root_for_current_pdf",
+            return_value=Path(tmp) / "missing",
+        ):
+            app.clear_current_diagnostics_output()
+
+        self.assertEqual("No diagnostics output to clear for book.", app.status_value)
+
+    def test_diagnosis_output_root_for_current_pdf_groups_spread_and_insert_outputs(self):
+        root = diagnosis_output_root_for_current_pdf(Path("/repo/manga-pdf-to-epub"), Path("/books/Vol 01.pdf"))
+
+        self.assertEqual(Path("/repo/manga-pdf-to-epub/epub_layout_gui_exports/diagnostics/Vol 01"), root)
 
 
 class DiagnosisManualSpreadSelectionTests(unittest.TestCase):
@@ -343,6 +901,63 @@ class DiagnosisViewRefreshTests(unittest.TestCase):
         self.assertTrue(getattr(app, "diagnose_refreshed", False))
         self.assertTrue(app.preview_refreshed)
         self.assertTrue(getattr(app, "diagnosis_preview_refreshed", False))
+
+
+class DiagnosisCandidateNavigationTests(unittest.TestCase):
+    def test_selected_candidate_jumps_to_matching_source_pages_and_refreshes_previews(self):
+        app = EpubLayoutApp.__new__(EpubLayoutApp)
+        app.model = SimpleNamespace(entries=[page(index) for index in range(1, 13)])
+        app.diagnosis_session = DiagnosisSession(source_page_count=12)
+        app.diagnosis_session.load_spread_candidates(
+            [
+                SpreadCandidate("009-010", 9, 10, 0.74, 0.73, "auto"),
+                SpreadCandidate("005-006", 5, 6, 0.64, 0.63, "auto"),
+            ]
+        )
+        app.page_list = FakeListbox(selection=None)
+        app.diagnosis_window = SimpleNamespace(
+            spine_list=FakeListbox(selection=None),
+            panel=SimpleNamespace(candidate_list=FakeListbox(selection=0)),
+        )
+        app.refresh_preview = lambda: setattr(app, "main_preview_selection", app.selected_indexes())
+        app.refresh_diagnosis_preview = lambda: setattr(app, "diagnosis_preview_selection", app.diagnosis_window.spine_list.curselection())
+        app._syncing_spine_selection = False
+
+        app.sync_spine_selection_from_candidate()
+
+        self.assertEqual((8, 9), app.page_list.curselection())
+        self.assertEqual((8, 9), app.diagnosis_window.spine_list.curselection())
+        self.assertEqual([8], app.page_list.seen)
+        self.assertEqual([8], app.diagnosis_window.spine_list.seen)
+        self.assertEqual([8, 9], app.main_preview_selection)
+        self.assertEqual((8, 9), app.diagnosis_preview_selection)
+
+    def test_selected_candidate_uses_current_layout_entry_indexes_after_insertions(self):
+        app = EpubLayoutApp.__new__(EpubLayoutApp)
+        app.model = SimpleNamespace(
+            entries=[
+                page(1),
+                SimpleNamespace(label="Inserted", source_index=None, is_blank=False),
+                page(2),
+                page(3),
+                page(4),
+            ]
+        )
+        app.diagnosis_session = DiagnosisSession(source_page_count=4)
+        app.diagnosis_session.load_spread_candidates([SpreadCandidate("002-003", 2, 3, 0.9, 0.8, "auto")])
+        app.page_list = FakeListbox(selection=None)
+        app.diagnosis_window = SimpleNamespace(
+            spine_list=FakeListbox(selection=None),
+            panel=SimpleNamespace(candidate_list=FakeListbox(selection=0)),
+        )
+        app.refresh_preview = lambda: None
+        app.refresh_diagnosis_preview = lambda: None
+        app._syncing_spine_selection = False
+
+        app.sync_spine_selection_from_candidate()
+
+        self.assertEqual((2, 3), app.page_list.curselection())
+        self.assertEqual((2, 3), app.diagnosis_window.spine_list.curselection())
 
 
 class DiagnosisGuiIntegrationTests(unittest.TestCase):
@@ -647,13 +1262,15 @@ class DiagnosisWindowLifecycleTests(unittest.TestCase):
         app.model = SimpleNamespace(entries=[page(1), page(2)])
         app.status = SimpleNamespace(set=lambda value: setattr(app, "status_value", value))
         app.refresh_diagnosis_panel = lambda: setattr(app, "panel_refreshed", True)
+        app.diagnosis_settings = DiagnosisSettings(spread_workers=8)
         created = []
 
         class FakeDiagnosisWindow:
-            def __init__(self, app_arg, parent, callbacks):
+            def __init__(self, app_arg, parent, callbacks, settings):
                 self.app_arg = app_arg
                 self.parent = parent
                 self.callbacks = callbacks
+                self.settings = settings
                 self.focus_count = 0
                 created.append(self)
 
@@ -666,6 +1283,7 @@ class DiagnosisWindowLifecycleTests(unittest.TestCase):
 
         self.assertIs(created[0], app.diagnosis_window)
         self.assertEqual(1, len(created))
+        self.assertIs(app.diagnosis_settings, created[0].settings)
         self.assertEqual(1, created[0].focus_count)
         self.assertTrue(app.panel_refreshed)
 
