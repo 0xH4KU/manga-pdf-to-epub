@@ -144,6 +144,23 @@ class EpubLayoutModelTests(unittest.TestCase):
 
             self.assertEqual(["Page 1", "Blank 1"], [entry.label for entry in applied.entries])
 
+    def test_preset_keeps_target_pages_beyond_template_source_count(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            pdf_path = Path(tmp) / "comic.pdf"
+            other_pdf_path = Path(tmp) / "other.pdf"
+            preset_path = Path(tmp) / "layout.json"
+            pdf_path.write_bytes(two_page_pdf_with_late_cover())
+            other_pdf_path.write_bytes(four_page_pdf())
+            model = LayoutModel.from_pdf(pdf_path)
+            model.delete_entry(1)
+            model.insert_blank(1)
+
+            model.save_preset(preset_path)
+            applied = LayoutModel.from_pdf(other_pdf_path)
+            applied.apply_preset(preset_path)
+
+            self.assertEqual(["Page 1", "Blank 1", "Page 3", "Page 4"], [entry.label for entry in applied.entries])
+
     def test_version_1_preset_still_loads(self):
         with tempfile.TemporaryDirectory() as tmp:
             pdf_path = Path(tmp) / "comic.pdf"

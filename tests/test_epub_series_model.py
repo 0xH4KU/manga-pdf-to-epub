@@ -412,6 +412,23 @@ class EpubSeriesModelTests(unittest.TestCase):
             self.assertEqual({"ready": 2, "failed": 0, "warnings": 1}, summary)
             self.assertEqual(["Applied layout image count differs from baseline: 1 != 2"], project.volumes[1].warnings)
 
+    def test_series_preset_application_keeps_pages_beyond_template_source_count(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            first_pdf = Path(tmp) / "Series Vol.01.pdf"
+            second_pdf = Path(tmp) / "Series Vol.02.pdf"
+            first_pdf.write_bytes(two_page_pdf_with_late_cover())
+            second_pdf.write_bytes(four_page_pdf())
+            project = SeriesProject.from_pdfs([first_pdf, second_pdf], title="Series")
+            first_model = project.model_for_volume(project.volumes[0])
+            first_model.delete_entry(1)
+            first_model.insert_blank(1)
+            payload = first_model.to_preset_payload()
+
+            second_model = project.model_for_volume(project.volumes[1])
+            second_model.apply_preset_payload(payload)
+
+            self.assertEqual(["Page 1", "Blank 1", "Page 3", "Page 4"], [entry.label for entry in second_model.entries])
+
     def test_export_ready_refuses_to_overwrite_existing_epub(self):
         with tempfile.TemporaryDirectory() as tmp:
             pdf_path = Path(tmp) / "Series Vol.01.pdf"

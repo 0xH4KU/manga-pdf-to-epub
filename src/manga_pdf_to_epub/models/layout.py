@@ -294,6 +294,8 @@ class LayoutModel:
     def _apply_v2_preset(self, payload: dict) -> None:
         source_entries = {entry.source_index: entry for entry in self.entries if entry.source_index is not None}
         original_entries = list(self.entries)
+        template_source_count = _preset_source_page_count(payload)
+        applied_source_indexes: set[int] = set()
         self.entries = []
         self._blank_counter = 0
         self._external_image_counter = 0
@@ -304,6 +306,7 @@ class LayoutModel:
                 entry = source_entries.get(source_index)
                 if entry is not None:
                     self.entries.append(entry)
+                    applied_source_indexes.add(int(source_index))
                 continue
             if kind == "blank":
                 if self.entries:
@@ -318,6 +321,13 @@ class LayoutModel:
                 self.insert_image(len(self.entries), image_path, item_id=item.get("entry_id"))
                 continue
             raise ValueError(f"Unsupported preset entry kind: {kind}")
+        self.entries.extend(
+            entry
+            for entry in original_entries
+            if entry.source_index is not None
+            and entry.source_index > template_source_count
+            and entry.source_index not in applied_source_indexes
+        )
 
         metadata = payload.get("metadata", {})
         self.title = metadata.get("title") or self.source_path.stem
@@ -461,6 +471,20 @@ def _inserted_item_number(item_id: str | None) -> int | None:
     if not number_text.isdigit():
         return None
     return int(number_text)
+
+
+def _preset_source_page_count(payload: dict) -> int:
+    count = payload.get("source_page_count")
+    if isinstance(count, int):
+        return count
+    if isinstance(count, str) and count.isdigit():
+        return int(count)
+    source_indexes = [
+        item.get("source_index")
+        for item in payload.get("entries", [])
+        if item.get("kind") == "source" and isinstance(item.get("source_index"), int)
+    ]
+    return max(source_indexes, default=0)
 
 
 def _reference_page(entries: list[LayoutEntry], index: int) -> EpubPage:
