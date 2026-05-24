@@ -909,25 +909,36 @@ class EpubLayoutApp(EpubLayoutDiagnosisMixin, EpubLayoutSeriesMixin):
         self.exclude_cover_var.set(exclude_cover)
 
     def _store_metadata_fields(self) -> None:
-        if self.model is None:
+        model = getattr(self, "model", None)
+        series_project = getattr(self, "series_project", None)
+        if model is None and series_project is None:
             return
-        title = self.title_var.get().strip()
-        author = self.author_var.get().strip()
-        language = self.language_var.get().strip() or "zh-Hant"
-        if self.series_project is not None:
-            self.series_project.title = title or self.series_project.title
-            self.series_project.author = author
-            self.series_project.language = language
+        title_var = getattr(self, "title_var", None)
+        author_var = getattr(self, "author_var", None)
+        language_var = getattr(self, "language_var", None)
+        if title_var is None or author_var is None or language_var is None:
+            return
+        title = title_var.get().strip()
+        author = author_var.get().strip()
+        language = language_var.get().strip() or "zh-Hant"
+        if series_project is not None:
+            series_project.title = title or series_project.title
+            series_project.author = author
+            series_project.language = language
+            if model is None:
+                return
             active_volume = getattr(self, "active_series_volume", None)
-            if active_volume is not None and hasattr(self.series_project, "generated_title"):
-                self.model.title = self.series_project.generated_title(active_volume)
-            self.model.author = self.series_project.author
-            self.model.language = self.series_project.language
+            if active_volume is not None and hasattr(series_project, "generated_title"):
+                model.title = series_project.generated_title(active_volume)
+            model.author = series_project.author
+            model.language = series_project.language
         else:
-            self.model.title = title or self.model.source_path.stem
-            self.model.author = author
-            self.model.language = language
-        self.model.exclude_cover_from_reading = self.exclude_cover_var.get()
+            model.title = title or model.source_path.stem
+            model.author = author
+            model.language = language
+        exclude_cover_var = getattr(self, "exclude_cover_var", None)
+        if exclude_cover_var is not None:
+            model.exclude_cover_from_reading = exclude_cover_var.get()
 
     def _sync_metadata_label_texts(self) -> None:
         self._ensure_metadata_label_vars()

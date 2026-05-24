@@ -329,6 +329,27 @@ class EpubLayoutGuiSeriesTests(unittest.TestCase):
         self.assertTrue(app.workspace_refreshed)
         self.assertEqual("Series exported 1 volumes; 0 failed, 2 skipped, 3 warnings.", app.status.value)
 
+    def test_export_ready_series_stores_metadata_fields_before_exporting(self):
+        app = EpubLayoutApp.__new__(EpubLayoutApp)
+        app.status = FakeStatus()
+        app.refresh_series_list = lambda: None
+        app.refresh_workspace_status = lambda: None
+        app.root = FakeRoot()
+        events = [{"status": "summary", "exported": 0, "failed": 0, "skipped": 0, "warnings": 0}]
+        project = SimpleNamespace(
+            volumes=[],
+            validate_ready=lambda output_dir: {"ready": 0, "failed": 0, "warnings": 0},
+            export_ready_iter=lambda output_dir: iter(events),
+        )
+        app.series_project = project
+        app._store_metadata_fields = lambda: setattr(app, "metadata_stored", True)
+        app._run_background = lambda _status, work, on_success: on_success(work()) or True
+
+        with patch("manga_pdf_to_epub.gui.layout_series_controller.filedialog.askdirectory", return_value="/tmp/out"):
+            app.export_ready_series()
+
+        self.assertTrue(app.metadata_stored)
+
     def test_export_ready_series_runs_in_background(self):
         app = EpubLayoutApp.__new__(EpubLayoutApp)
         app.status = FakeStatus()

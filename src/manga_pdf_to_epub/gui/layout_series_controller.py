@@ -222,6 +222,7 @@ class EpubLayoutSeriesMixin:
         if getattr(self, "_busy", False):
             self.status.set("Another operation is already running.")
             return
+        self._store_metadata_fields()
         output_dir_name = filedialog.askdirectory(
             title="Series output directory",
             initialdir=str(getattr(self, "output_dir", Path.cwd())),

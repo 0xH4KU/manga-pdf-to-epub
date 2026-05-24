@@ -53,6 +53,21 @@ class EpubLayoutGuiProjectTests(unittest.TestCase):
         self.assertEqual("晚安,布布 Vol.01", app.model.title)
         self.assertTrue(app.model.exclude_cover_from_reading)
 
+    def test_store_metadata_fields_updates_series_metadata_without_active_model(self):
+        app = EpubLayoutApp.__new__(EpubLayoutApp)
+        app.model = None
+        app.series_project = SimpleNamespace(title="Old", author="", language="zh-Hant")
+        app.title_var = SimpleNamespace(get=lambda: "迷宮飯")
+        app.author_var = SimpleNamespace(get=lambda: "九井諒子")
+        app.language_var = SimpleNamespace(get=lambda: "ja")
+        app.exclude_cover_var = FakeBool(False)
+
+        app._store_metadata_fields()
+
+        self.assertEqual("迷宮飯", app.series_project.title)
+        self.assertEqual("九井諒子", app.series_project.author)
+        self.assertEqual("ja", app.series_project.language)
+
     def test_load_metadata_fields_reads_cover_only_option(self):
         app = EpubLayoutApp.__new__(EpubLayoutApp)
         app.model = FakeDeleteModel([entry("Page 1"), entry("Page 2")])
