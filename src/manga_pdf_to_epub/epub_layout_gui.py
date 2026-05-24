@@ -10,6 +10,13 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, simpledialog, ttk
 
 from .fitz_compat import load_fitz
+from .epub_layout_commands import app_commands
+from .epub_layout_diagnosis_controller import (
+    EpubLayoutDiagnosisMixin,
+    build_diagnosis_entry_tab,
+    initialize_diagnosis_state,
+    reset_diagnosis_for_model,
+)
 from .epub_layout_history import CoverState, DeleteHistory
 from .epub_layout_model import LayoutEntry, LayoutModel
 from .epub_layout_gui_support import (
@@ -34,7 +41,7 @@ from .epub_series_model import SeriesProject, SeriesVolume
 fitz = load_fitz()
 
 
-class EpubLayoutApp:
+class EpubLayoutApp(EpubLayoutDiagnosisMixin):
     def __init__(self, root: tk.Tk):
         self.root = root
         self._configure_window()
@@ -61,6 +68,7 @@ class EpubLayoutApp:
         self.active_series_volume: SeriesVolume | None = None
         self._busy = False
         self._page_drag_source: int | None = None
+        initialize_diagnosis_state(self)
 
         self._build_ui()
         self._bind_shortcuts()
@@ -74,8 +82,8 @@ class EpubLayoutApp:
         self.root.minsize(1100, 680)
 
     @staticmethod
-    def _inspector_tab_titles() -> tuple[str, str, str]:
-        return ("Edit", "Book", "Series")
+    def _inspector_tab_titles() -> tuple[str, str, str, str]:
+        return ("Edit", "Diagnose", "Book", "Series")
 
     @staticmethod
     def _edit_section_titles() -> tuple[str, str, str]:
@@ -107,7 +115,7 @@ class EpubLayoutApp:
         self.delete_selected_entry()
         return None
 
-    def _run_background(self, status_message: str, work, on_success) -> bool:
+    def _run_background(self, status_message: str, work, on_success, on_failure=None) -> bool:
         if getattr(self, "_busy", False):
             self.status.set("Another operation is already running.")
             return False
@@ -120,7 +128,7 @@ class EpubLayoutApp:
                 result = work()
                 self.root.after(0, lambda: self._background_done(result, on_success))
             except Exception as exc:
-                self.root.after(0, lambda: self._background_failed(exc))
+                self.root.after(0, lambda exc=exc: self._background_failed(exc, on_failure))
 
         threading.Thread(target=worker, daemon=True).start()
         return True
@@ -129,9 +137,12 @@ class EpubLayoutApp:
         self._busy = False
         on_success(result)
 
-    def _background_failed(self, exc: Exception) -> None:
+    def _background_failed(self, exc: Exception, on_failure=None) -> None:
         self._busy = False
-        self._export_failed(exc)
+        if on_failure is None:
+            self._export_failed(exc)
+        else:
+            on_failure(exc)
 
     def _build_ui(self) -> None:
         toolbar = ttk.Frame(self.root, padding=8)
@@ -179,7 +190,7 @@ class EpubLayoutApp:
         ttk.Label(self.spine_pane, text="Spine order").pack(anchor=tk.W)
         self.page_list = tk.Listbox(self.spine_pane, exportselection=False, activestyle="dotbox", selectmode=tk.EXTENDED)
         self.page_list.pack(fill=tk.BOTH, expand=True, pady=(6, 12))
-        self.page_list.bind("<<ListboxSelect>>", lambda _event: self.refresh_preview())
+        self.page_list.bind("<<ListboxSelect>>", lambda _event: self.sync_selection_from_main())
         self.page_list.bind("<ButtonPress-1>", self._page_drag_start)
         self.page_list.bind("<ButtonRelease-1>", self._page_drag_release)
         self._sync_navigation_mode()
@@ -193,7 +204,7 @@ class EpubLayoutApp:
             preview_header,
             text="Preview Apple Books cover gap",
             variable=self.apple_preview,
-            command=self.refresh_preview,
+            command=self.refresh_preview_after_diagnosis_layout_option_change,
         ).pack(side=tk.RIGHT)
         self.preview = tk.Canvas(center, background="#202020", highlightthickness=0)
         self.preview.pack(fill=tk.BOTH, expand=True, pady=(6, 0))
@@ -209,9 +220,11 @@ class EpubLayoutApp:
         content = ttk.Frame(inspector)
         content.pack(fill=tk.BOTH, expand=True)
         edit_tab = self._add_inspector_tab(content, "Edit")
+        diagnose_tab = self._add_inspector_tab(content, "Diagnose")
         book_tab = self._add_inspector_tab(content, "Book")
         series_tab = self._add_inspector_tab(content, "Series")
         self._build_edit_tab(edit_tab)
+        build_diagnosis_entry_tab(self, diagnose_tab)
         self._build_book_tab(book_tab)
         self._build_series_tab(series_tab)
         self._show_inspector_tab("Edit")
@@ -307,31 +320,9 @@ class EpubLayoutApp:
     def _add_panel_button(self, parent: ttk.Frame, text: str, command) -> None:
         ttk.Button(parent, text=text, command=command).pack(fill=tk.X, pady=(6, 0))
 
-    def _commands(self) -> tuple[AppCommand, ...]:
-        return (
-            AppCommand("Open PDF", "open_pdf", keywords=("import", "load")),
-            AppCommand("Import Series", "import_series", keywords=("folder", "volumes")),
-            AppCommand("Export EPUB", "export_epub", keywords=("save",)),
-            AppCommand("Mark Selected Volume Ready", "mark_selected_series_volume_ready", keywords=("series",)),
-            AppCommand("Unready Selected", "unready_selected", keywords=("series", "undo")),
-            AppCommand("Export Ready Series", "export_ready_series", keywords=("series",)),
-            AppCommand("Validate Series", "validate_series", keywords=("series", "check")),
-            AppCommand("Save Project", "save_project", keywords=("series", "project")),
-            AppCommand("Open Project", "open_project", keywords=("series", "project")),
-            AppCommand("Save Preset", "save_preset", keywords=("layout",)),
-            AppCommand("Load Preset", "load_preset", keywords=("layout",)),
-            AppCommand("Insert Blank Before", "insert_blank", (True,), ("page",)),
-            AppCommand("Insert Blank After", "insert_blank", (False,), ("page",)),
-            AppCommand("Insert Image Before", "insert_image", (True,), ("page",)),
-            AppCommand("Insert Image After", "insert_image", (False,), ("page",)),
-            AppCommand("Delete Selected Page", "delete_selected_entry", keywords=("remove",)),
-            AppCommand("Delete First...", "ask_delete_first", keywords=("bulk", "remove")),
-            AppCommand("Delete Last...", "ask_delete_last", keywords=("bulk", "remove")),
-            AppCommand("Delete Range...", "ask_delete_range", keywords=("bulk", "remove")),
-            AppCommand("Recover Last Deleted", "recover_last_deleted", keywords=("undo",)),
-            AppCommand("Set Selected As Cover", "set_selected_as_cover", keywords=("metadata",)),
-            AppCommand("Export Selected Images", "export_selected_images", keywords=("extract",)),
-        )
+    @staticmethod
+    def _commands() -> tuple[AppCommand, ...]:
+        return app_commands()
 
     def _matching_commands(self, query: str) -> list[AppCommand]:
         words = [word.casefold() for word in query.split() if word.strip()]
@@ -485,8 +476,8 @@ class EpubLayoutApp:
             self._load_metadata_fields()
             self.refresh_series_list()
             self._restore_saved_active_series_selection()
-            self.refresh_list()
-            self.refresh_preview()
+            self.refresh_spine_views()
+            self.refresh_preview_views()
             self.status.set(f"Opened project: {project_path.name}")
             self.refresh_workspace_status()
         except Exception as exc:
@@ -788,36 +779,36 @@ class EpubLayoutApp:
     def _load_series_volume(self, volume: SeriesVolume) -> None:
         self.pdf_path = volume.pdf_path
         self.model = self.series_project.model_for_volume(volume) if self.series_project is not None else None
+        reset_diagnosis_for_model(self, self.model)
         self.active_series_volume = volume
         self._reset_deleted_history()
         self._reset_preview_cache()
         self._load_metadata_fields()
-        self.refresh_list()
-        self.page_list.selection_clear(0, tk.END)
-        if self.model is not None and self.model.entries:
-            self.page_list.selection_set(0)
+        self.refresh_spine_views()
+        self._select_first_spine_row()
         self.status.set(f"Loaded {self.series_project.generated_title(volume)}.")
         self.refresh_workspace_status()
-        self.refresh_preview()
+        self.refresh_preview_views()
 
     def _open_pdf_done(self, model: LayoutModel) -> None:
         self.model = model
+        reset_diagnosis_for_model(self, model)
         self.series_project = None
         self.active_series_volume = None
         self._sync_navigation_mode()
         self._reset_deleted_history()
         self._reset_preview_cache()
         self._load_metadata_fields()
-        self.refresh_list()
-        self.page_list.selection_clear(0, tk.END)
-        if self.model.entries:
-            self.page_list.selection_set(0)
+        self.refresh_spine_views()
+        self._select_first_spine_row()
         self.status.set(f"Loaded {self.pdf_path.name}: {len(self.model.entries)} pages")
         self.refresh_workspace_status()
-        self.refresh_preview()
+        self.refresh_preview_views()
 
     def refresh_list(self, preserve_yview: bool = False) -> None:
         if self.model is None:
+            if hasattr(self, "page_list"):
+                self.page_list.delete(0, tk.END)
             self.refresh_workspace_status()
             return
         yview_start = self.page_list.yview()[0] if preserve_yview else None
@@ -825,7 +816,10 @@ class EpubLayoutApp:
         for i, entry in enumerate(self.model.entries, start=1):
             marker = "[blank]" if entry.is_blank else "[page]"
             cover = " [cover]" if self._is_cover_entry(entry) else ""
-            self.page_list.insert(tk.END, f"{i:04d} {marker}{cover} {entry.label}")
+            row_index = i - 1
+            spine_marker = self._marker_text_for_entry(row_index)
+            self.page_list.insert(tk.END, f"{i:04d} {marker}{cover}{spine_marker} {entry.label}")
+            self._apply_spine_marker_color(row_index)
         if yview_start is not None:
             self.page_list.yview_moveto(yview_start)
         self.refresh_workspace_status()
@@ -1030,7 +1024,7 @@ class EpubLayoutApp:
             return
         try:
             self.model.set_cover_entry(entry)
-            self.refresh_list(preserve_yview=True)
+            self.refresh_spine_views(preserve_yview=True)
             self.status.set(f"Set {entry.label} as cover.")
             self._mark_active_volume_edited()
         except Exception as exc:
@@ -1140,11 +1134,13 @@ class EpubLayoutApp:
         preserve_yview: bool = True,
         mark_edited: bool = True,
     ) -> None:
-        self.refresh_list(preserve_yview=preserve_yview)
+        if mark_edited:
+            self._mark_diagnosis_stale()
+        self.refresh_spine_views(preserve_yview=preserve_yview)
         self.page_list.selection_clear(0, tk.END)
         if select_index is not None:
             self.page_list.selection_set(select_index)
-        self.refresh_preview()
+        self.refresh_preview_views()
         if mark_edited:
             self._mark_active_volume_edited()
 
@@ -1238,12 +1234,13 @@ class EpubLayoutApp:
         if self.model is None:
             return
         self.model.apply_preset(preset_path)
+        self._mark_diagnosis_stale()
         self._load_metadata_fields()
-        self.refresh_list()
+        self.refresh_spine_views()
         self.page_list.selection_clear(0, tk.END)
         if self.model.entries:
             self.page_list.selection_set(0)
-        self.refresh_preview()
+        self.refresh_preview_views()
         self.status.set(f"Loaded preset: {preset_path.name}")
 
     def _load_preset_for_series(self, preset_path: Path) -> None:
@@ -1276,12 +1273,13 @@ class EpubLayoutApp:
         self._restore_active_series_selection()
         self.refresh_workspace_status()
         if active_was_updated:
+            self._mark_diagnosis_stale()
             self._load_metadata_fields()
-            self.refresh_list()
+            self.refresh_spine_views()
             self.page_list.selection_clear(0, tk.END)
             if self.model is not None and self.model.entries:
                 self.page_list.selection_set(0)
-            self.refresh_preview()
+            self.refresh_preview_views()
         self.status.set(f"Loaded preset for {len(target_volumes)} volumes: {preset_path.name}")
 
     def _load_metadata_fields(self) -> None:
@@ -1362,11 +1360,13 @@ class EpubLayoutApp:
         messagebox.showerror("Export failed", str(exc))
 
     def refresh_preview(self) -> None:
-        self.preview.delete("all")
-        self.photo_refs.clear()
+        self._refresh_preview_canvas(self.preview, self.photo_refs, self.selected_index())
+
+    def _refresh_preview_canvas(self, canvas, photo_refs: list, selected: int | None) -> None:
+        canvas.delete("all")
+        photo_refs.clear()
         if self.model is None or not self.model.entries:
             return
-        selected = self.selected_index()
         if selected is None:
             selected = 0
         preview_entries = self._preview_entries()
@@ -1374,15 +1374,15 @@ class EpubLayoutApp:
         pair_start = preview_selected if preview_selected % 2 == 0 else preview_selected - 1
         entries = preview_entries[pair_start : pair_start + 2]
 
-        width = max(400, self.preview.winfo_width())
-        height = max(300, self.preview.winfo_height())
+        width = max(400, canvas.winfo_width())
+        height = max(300, canvas.winfo_height())
         gap = 12
         page_w = (width - gap * 3) // 2
         page_h = height - gap * 2
 
         slots = self._spread_slots(pair_start, gap, page_w)
         for entry, (x, y) in zip(entries, slots):
-            self._draw_entry(entry, x, y, page_w, page_h)
+            self._draw_entry_on_canvas(canvas, photo_refs, entry, x, y, page_w, page_h)
 
     def _preview_index_for_selection(self, selected: int) -> int:
         return preview_index_for_selection(selected, self._uses_apple_cover_gap())
@@ -1400,24 +1400,27 @@ class EpubLayoutApp:
             return False
         return self.apple_preview.get()
 
-    def _draw_entry(self, entry, x: int, y: int, max_w: int, max_h: int) -> None:
-        self.preview.create_rectangle(x, y, x + max_w, y + max_h, fill="#ffffff", outline="#707070")
+    def _draw_entry_on_canvas(self, canvas, photo_refs: list, entry, x: int, y: int, max_w: int, max_h: int) -> None:
+        canvas.create_rectangle(x, y, x + max_w, y + max_h, fill="#ffffff", outline="#707070")
         if entry.is_blank:
             fill = "#a0a0a0" if isinstance(entry, VirtualBlank) else "#606060"
-            self.preview.create_text(x + max_w // 2, y + max_h // 2, text=entry.label, fill=fill)
+            canvas.create_text(x + max_w // 2, y + max_h // 2, text=entry.label, fill=fill)
             return
         if getattr(entry, "source_index", None) is None:
             photo = self._thumbnail_for_entry(entry, max_w, max_h)
         else:
             photo = self._thumbnail_for_page(entry.page.index, max_w, max_h)
         if photo is None:
-            self.preview.create_text(x + max_w // 2, y + max_h // 2, text=entry.label, fill="#202020")
+            canvas.create_text(x + max_w // 2, y + max_h // 2, text=entry.label, fill="#202020")
             return
-        self.photo_refs.append(photo)
+        photo_refs.append(photo)
         image_x = x + (max_w - photo.width()) // 2
         image_y = y + (max_h - photo.height()) // 2
-        self.preview.create_image(image_x, image_y, anchor=tk.NW, image=photo)
-        self.preview.create_text(x + 8, y + 16, text=entry.label, anchor=tk.W, fill="#ffffff")
+        canvas.create_image(image_x, image_y, anchor=tk.NW, image=photo)
+        canvas.create_text(x + 8, y + 16, text=entry.label, anchor=tk.W, fill="#ffffff")
+
+    def _draw_entry(self, entry, x: int, y: int, max_w: int, max_h: int) -> None:
+        self._draw_entry_on_canvas(self.preview, self.photo_refs, entry, x, y, max_w, max_h)
 
     def _thumbnail_for_page(self, page_index: int, max_w: int, max_h: int) -> tk.PhotoImage | None:
         if self.pdf_path is None:

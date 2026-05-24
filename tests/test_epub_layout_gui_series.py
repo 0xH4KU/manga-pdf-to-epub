@@ -83,8 +83,8 @@ class EpubLayoutGuiSeriesTests(unittest.TestCase):
         app.deleted_entries = []
         app.thumbnail_cache = {}
         app._load_metadata_fields = lambda: setattr(app, "metadata_loaded", True)
-        app.refresh_list = lambda: setattr(app, "list_refreshed", True)
-        app.refresh_preview = lambda: setattr(app, "preview_refreshed", True)
+        app.refresh_spine_views = lambda: setattr(app, "list_refreshed", True)
+        app.refresh_preview_views = lambda: setattr(app, "preview_refreshed", True)
         app.refresh_workspace_status = lambda: None
 
         app.select_series_volume()
@@ -96,6 +96,42 @@ class EpubLayoutGuiSeriesTests(unittest.TestCase):
         self.assertTrue(app.list_refreshed)
         self.assertTrue(app.preview_refreshed)
         self.assertEqual("Loaded Series Vol.01.", app.status.value)
+
+    def test_select_series_volume_resets_diagnosis_for_loaded_model(self):
+        app = EpubLayoutApp.__new__(EpubLayoutApp)
+        first = SimpleNamespace(
+            pdf_path=Path("/tmp/vol01.pdf"),
+            volume_number=1,
+            status="Unreviewed",
+            layout_model=FakeDeleteModel([entry("Page 1"), entry("Page 2"), entry("Page 3")]),
+        )
+        project = SimpleNamespace(
+            volumes=[first],
+            generated_title=lambda volume: f"Series Vol.{volume.volume_number:02d}",
+            model_for_volume=lambda volume: volume.layout_model,
+        )
+        app.series_project = project
+        app.series_list = FakeListbox(selection=0)
+        app.page_list = FakeListbox(selection=0)
+        app.status = FakeStatus()
+        app.deleted_entries = []
+        app.thumbnail_cache = {}
+        app.diagnosis_session = SimpleNamespace(source_page_count=99)
+        app.spread_damage = ["old"]
+        app.insert_classification = "old"
+        app.diagnosis_stale = True
+        app.diagnosis_panel = None
+        app._load_metadata_fields = lambda: None
+        app.refresh_spine_views = lambda: None
+        app.refresh_preview_views = lambda: None
+        app.refresh_workspace_status = lambda: None
+
+        app.select_series_volume()
+
+        self.assertEqual(3, app.diagnosis_session.source_page_count)
+        self.assertEqual([], app.spread_damage)
+        self.assertIsNone(app.insert_classification)
+        self.assertFalse(app.diagnosis_stale)
 
     def test_mark_selected_series_volume_ready_updates_series_list(self):
         app = EpubLayoutApp.__new__(EpubLayoutApp)

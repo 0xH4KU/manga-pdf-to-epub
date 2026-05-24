@@ -108,6 +108,18 @@ class EpubLayoutGuiCommandTests(unittest.TestCase):
 
         self.assertIn("Validate Series", labels)
 
+    def test_command_palette_includes_open_diagnose_window(self):
+        commands = [command.label for command in EpubLayoutApp._commands()]
+
+        self.assertIn("Open Diagnose Window", commands)
+
+    def test_command_palette_finds_diagnose_window_by_diagnosis_keyword(self):
+        app = EpubLayoutApp.__new__(EpubLayoutApp)
+
+        labels = [command.label for command in app._matching_commands("diagnosis")]
+
+        self.assertIn("Open Diagnose Window", labels)
+
     def test_command_palette_dispatches_bulk_delete_actions(self):
         app = EpubLayoutApp.__new__(EpubLayoutApp)
         app.ask_delete_range = lambda: setattr(app, "range_delete_opened", True)
@@ -158,6 +170,46 @@ class EpubLayoutGuiCommandTests(unittest.TestCase):
         self.assertFalse(app._busy)
         self.assertEqual(42, app.done_value)
         self.assertEqual("Working...", app.status.value)
+
+    def test_run_background_uses_custom_failure_handler(self):
+        app = EpubLayoutApp.__new__(EpubLayoutApp)
+        app.root = FakeRoot()
+        app.status = FakeStatus()
+        app._busy = False
+
+        with patch("manga_pdf_to_epub.epub_layout_gui.threading.Thread") as thread:
+            thread.side_effect = lambda target, daemon: SimpleNamespace(start=target)
+            started = app._run_background(
+                "Working...",
+                lambda: (_ for _ in ()).throw(ValueError("bad")),
+                lambda value: None,
+                on_failure=lambda exc: setattr(app, "failure_message", str(exc)),
+            )
+
+        self.assertTrue(started)
+        self.assertFalse(app._busy)
+        self.assertEqual("bad", app.failure_message)
+
+    def test_run_background_failure_handler_survives_async_after(self):
+        app = EpubLayoutApp.__new__(EpubLayoutApp)
+        app.root = FakeRoot()
+        app.status = FakeStatus()
+        app._busy = False
+        queued = []
+        app.root.after = lambda delay, callback: queued.append(callback)
+
+        with patch("manga_pdf_to_epub.epub_layout_gui.threading.Thread") as thread:
+            thread.side_effect = lambda target, daemon: SimpleNamespace(start=target)
+            app._run_background(
+                "Working...",
+                lambda: (_ for _ in ()).throw(ValueError("late bad")),
+                lambda value: None,
+                on_failure=lambda exc: setattr(app, "failure_message", str(exc)),
+            )
+
+        queued[0]()
+
+        self.assertEqual("late bad", app.failure_message)
 
     def test_run_background_rejects_reentrant_work(self):
         app = EpubLayoutApp.__new__(EpubLayoutApp)

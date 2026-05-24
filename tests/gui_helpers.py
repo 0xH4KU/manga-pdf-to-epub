@@ -32,6 +32,8 @@ class FakeListbox:
         self.selection = selection
         self.current_yview = yview
         self.moved_to = None
+        self.seen = []
+        self.item_options = {}
 
     def curselection(self):
         if self.selection is None:
@@ -52,8 +54,14 @@ class FakeListbox:
     def selection_clear(self, *_args):
         self.selection = None
 
-    def selection_set(self, index):
-        self.selection = index
+    def selection_set(self, index, last=None):
+        indexes = tuple(range(index, last + 1)) if last is not None else (index,)
+        if self.selection is None:
+            self.selection = indexes[0] if len(indexes) == 1 else indexes
+            return
+        current = self.curselection()
+        merged = (*current, *(item for item in indexes if item not in current))
+        self.selection = merged[0] if len(merged) == 1 else merged
 
     def yview(self):
         return self.current_yview
@@ -62,10 +70,16 @@ class FakeListbox:
         self.moved_to = fraction
         self.current_yview = (fraction, fraction)
 
+    def see(self, index):
+        self.seen.append(index)
+
     def nearest(self, y):
         if not self.items:
             return 0
         return min(max(int(y), 0), len(self.items) - 1)
+
+    def itemconfig(self, index, **kwargs):
+        self.item_options[index] = kwargs
 
 
 class FakeStatus:
@@ -224,5 +238,5 @@ def app_for_preview(entries, selected):
     app.apple_preview = FakeBool(True)
     app.selected_index = lambda: selected
     app.draws = []
-    app._draw_entry = lambda entry, x, y, width, height: app.draws.append((entry.label, x))
+    app._draw_entry_on_canvas = lambda canvas, photo_refs, entry, x, y, width, height: app.draws.append((entry.label, x))
     return app
