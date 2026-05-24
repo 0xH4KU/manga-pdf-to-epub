@@ -13,13 +13,13 @@ from ..models.series import SeriesProject, SeriesVolume
 class EpubLayoutSeriesMixin:
     def import_series(self) -> None:
         filenames = filedialog.askopenfilenames(
-            title="Import Series PDFs",
-            filetypes=[("PDF files", "*.pdf"), ("All files", "*.*")],
+            title="Import Series Sources",
+            filetypes=[("Manga source files", "*.pdf *.cbz *.zip"), ("All files", "*.*")],
             initialdir=str(Path.cwd()),
         )
         if not filenames:
             return
-        self.series_project = SeriesProject.from_pdfs([Path(filename) for filename in filenames])
+        self.series_project = SeriesProject.from_sources([Path(filename) for filename in filenames])
         self._sync_navigation_mode()
         self._load_metadata_fields()
         self.refresh_series_list()

@@ -55,7 +55,7 @@ class EpubLayoutApp(EpubLayoutDiagnosisMixin, EpubLayoutSeriesMixin):
         self._pdf_doc_path: Path | None = None
         self.deleted_history: DeleteHistory[LayoutEntry] = DeleteHistory()
         self.ready_status_undo: list[list[tuple[SeriesVolume, str]]] = []
-        self.status = tk.StringVar(value="Open a PDF to begin.")
+        self.status = tk.StringVar(value="Open a source file to begin.")
         self.workspace_status = tk.StringVar(value="")
         self.apple_preview = tk.BooleanVar(value=True)
         self.title_var = tk.StringVar(value="")
@@ -381,7 +381,7 @@ class EpubLayoutApp(EpubLayoutDiagnosisMixin, EpubLayoutSeriesMixin):
 
     def _workspace_summary(self) -> str:
         if self.model is None:
-            page_summary = "No PDF loaded"
+            page_summary = "No source loaded"
         else:
             page_summary = f"Pages: {len(self.model.entries)}"
         if self.series_project is None:
@@ -402,16 +402,16 @@ class EpubLayoutApp(EpubLayoutDiagnosisMixin, EpubLayoutSeriesMixin):
 
     def open_pdf(self) -> None:
         filename = filedialog.askopenfilename(
-            title="Open PDF",
-            filetypes=[("PDF files", "*.pdf"), ("All files", "*.*")],
+            title="Open Source",
+            filetypes=[("Manga source files", "*.pdf *.cbz *.zip"), ("All files", "*.*")],
             initialdir=str(Path.cwd()),
         )
         if not filename:
             return
         self.pdf_path = Path(filename)
         self._run_background(
-            "Loading PDF images...",
-            lambda: LayoutModel.from_pdf(self.pdf_path),
+            "Loading source images...",
+            lambda: LayoutModel.from_source(self.pdf_path),
             self._open_pdf_done,
         )
 
@@ -1010,8 +1010,10 @@ class EpubLayoutApp(EpubLayoutDiagnosisMixin, EpubLayoutSeriesMixin):
             return
         if getattr(entry, "source_index", None) is None:
             photo = self._thumbnail_for_entry(entry, max_w, max_h)
-        else:
+        elif self._source_uses_pdf_renderer():
             photo = self._thumbnail_for_page(entry.page.index, max_w, max_h)
+        else:
+            photo = self._thumbnail_for_source_entry(entry, max_w, max_h)
         if photo is None:
             canvas.create_text(x + max_w // 2, y + max_h // 2, text=entry.label, fill="#202020")
             return
@@ -1047,6 +1049,12 @@ class EpubLayoutApp(EpubLayoutDiagnosisMixin, EpubLayoutSeriesMixin):
             if hasattr(self, "status"):
                 self.status.set(f"Preview failed for page {page_index}.")
             return None
+
+    def _thumbnail_for_source_entry(self, entry, max_w: int, max_h: int) -> tk.PhotoImage | None:
+        return self._thumbnail_for_entry(entry, max_w, max_h)
+
+    def _source_uses_pdf_renderer(self) -> bool:
+        return self.pdf_path is not None and self.pdf_path.suffix.lower() == ".pdf"
 
     def _start_thumbnail_render(self, page_index: int, max_w: int, max_h: int, cache_key: tuple) -> None:
         if self.pdf_path is None or cache_key in self._thumbnail_render_jobs:

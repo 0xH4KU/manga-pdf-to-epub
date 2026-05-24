@@ -10,6 +10,7 @@ from ..pdf.image_extraction import images_in_pdf_page_order
 from ..pdf.image_types import ImageStream, PdfImageError
 from ..epub.page_factory import page_from_image
 from ..epub.writer import EpubPage, media_type_for_ext, write_epub_from_pages
+from ..sources.archive import ArchiveImage, archive_images_in_page_order
 
 
 fitz = load_fitz()
@@ -54,9 +55,29 @@ class LayoutModel:
 
     @classmethod
     def from_pdf(cls, pdf_path: Path) -> "LayoutModel":
+        return cls.from_source(pdf_path)
+
+    @classmethod
+    def from_source(cls, source_path: Path) -> "LayoutModel":
+        source_path = Path(source_path)
+        suffix = source_path.suffix.lower()
+        if suffix == ".pdf":
+            return cls._from_pdf_source(source_path)
+        if suffix in {".cbz", ".zip"}:
+            return cls._from_archive_source(source_path)
+        raise PdfImageError(f"Unsupported source file: {source_path}")
+
+    @classmethod
+    def _from_pdf_source(cls, pdf_path: Path) -> "LayoutModel":
         images = images_in_pdf_page_order(pdf_path, load_payloads=False)
         entries = [_entry_from_image(image, max(4, len(str(len(images))))) for image in images]
         return cls(pdf_path, entries, source_page_count=len(images))
+
+    @classmethod
+    def _from_archive_source(cls, archive_path: Path) -> "LayoutModel":
+        images = archive_images_in_page_order(archive_path, load_payloads=False)
+        entries = [_entry_from_archive_image(image, max(4, len(str(len(images))))) for image in images]
+        return cls(archive_path, entries, source_page_count=len(images))
 
     def insert_blank(self, index: int) -> None:
         if index < 0 or index > len(self.entries):
@@ -413,6 +434,23 @@ class LayoutModel:
 def _entry_from_image(image: ImageStream, padding: int) -> LayoutEntry:
     page, _ext = page_from_image(image, padding, load_payload=False)
     return LayoutEntry(page.label, page, source_index=image.index)
+
+
+def _entry_from_archive_image(image: ArchiveImage, padding: int) -> LayoutEntry:
+    page_number = f"{image.index:0{padding}d}"
+    page = EpubPage(
+        index=image.index,
+        width=image.width,
+        height=image.height,
+        image_href=f"images/page-{page_number}.{image.epub_ext}",
+        image_media_type=media_type_for_ext(image.epub_ext),
+        image_data=None,
+        xhtml_href=f"xhtml/page-{page_number}.xhtml",
+        item_id=f"page-{image.index:04d}",
+        label=image.label,
+        image_data_loader=image.load_data,
+    )
+    return LayoutEntry(image.label, page, source_index=image.source_index)
 
 
 def _inserted_item_number(item_id: str | None) -> int | None:

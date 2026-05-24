@@ -1,8 +1,11 @@
 import tempfile
 import unittest
 import json
+from io import BytesIO
 from pathlib import Path
 from zipfile import ZipFile
+
+from PIL import Image
 
 from manga_pdf_to_epub.models.layout import LayoutModel
 from manga_pdf_to_epub.pdf.image_types import PdfImageError
@@ -10,6 +13,40 @@ from tests.helpers import four_page_pdf, one_page_pdf, tiny_png, two_page_pdf_wi
 
 
 class EpubLayoutModelTests(unittest.TestCase):
+    def test_source_archive_pages_are_loaded_lazily_in_layout_model(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            archive_path = Path(tmp) / "comic.cbz"
+            png_bytes = tiny_png()
+            with ZipFile(archive_path, "w") as archive:
+                archive.writestr("page-2.webp", _sample_image("WEBP", (2, 3)))
+                archive.writestr("page-1.png", png_bytes)
+
+            model = LayoutModel.from_source(archive_path)
+
+            self.assertEqual(archive_path, model.source_path)
+            self.assertEqual(2, model.source_page_count)
+            self.assertEqual(["page-1", "page-2"], [entry.label for entry in model.entries])
+            self.assertEqual([1, 2], [entry.source_index for entry in model.entries])
+            self.assertIsNone(model.entries[0].page.image_data)
+            self.assertIsNotNone(model.entries[0].page.image_data_loader)
+
+    def test_archive_layout_exports_direct_and_converted_images_to_epub(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            archive_path = Path(tmp) / "comic.zip"
+            epub_path = Path(tmp) / "comic.epub"
+            png_bytes = tiny_png()
+            with ZipFile(archive_path, "w") as archive:
+                archive.writestr("page-1.png", png_bytes)
+                archive.writestr("page-2.webp", _sample_image("WEBP", (2, 3)))
+
+            model = LayoutModel.from_source(archive_path)
+            counts = model.export_epub(epub_path, overwrite=True, title="Comic")
+
+            self.assertEqual({"jpg": 0, "png": 2, "total": 2}, counts)
+            with ZipFile(epub_path) as archive:
+                self.assertEqual(png_bytes, archive.read("EPUB/images/page-0001.png"))
+                self.assertTrue(archive.read("EPUB/images/page-0002.png").startswith(b"\x89PNG\r\n\x1a\n"))
+
     def test_source_pdf_pages_are_loaded_lazily_in_layout_model(self):
         with tempfile.TemporaryDirectory() as tmp:
             pdf_path = Path(tmp) / "comic.pdf"
@@ -600,3 +637,10 @@ class EpubLayoutModelTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def _sample_image(fmt: str, size: tuple[int, int]) -> bytes:
+    image = Image.new("RGB", size, (0, 0, 255))
+    output = BytesIO()
+    image.save(output, format=fmt)
+    return output.getvalue()

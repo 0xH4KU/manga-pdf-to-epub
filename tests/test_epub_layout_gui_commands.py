@@ -141,7 +141,7 @@ class EpubLayoutGuiCommandTests(unittest.TestCase):
         app.model = None
         app.series_project = None
 
-        self.assertEqual("No PDF loaded | Series: 0", app._workspace_summary())
+        self.assertEqual("No source loaded | Series: 0", app._workspace_summary())
 
     def test_workspace_summary_reports_pages_and_series_counts(self):
         app = EpubLayoutApp.__new__(EpubLayoutApp)
@@ -230,7 +230,18 @@ class EpubLayoutGuiCommandTests(unittest.TestCase):
             app.open_pdf()
 
         self.assertEqual(Path("/tmp/book.pdf"), app.pdf_path)
-        self.assertEqual("Loading PDF images...", app.background_call[0])
+        self.assertEqual("Loading source images...", app.background_call[0])
+
+    def test_open_source_accepts_pdf_cbz_and_zip_files(self):
+        app = EpubLayoutApp.__new__(EpubLayoutApp)
+        app._run_background = lambda status, work, on_success: setattr(app, "background_call", (status, work, on_success)) or True
+
+        with patch("manga_pdf_to_epub.gui.layout_app.filedialog.askopenfilename", return_value="/tmp/book.cbz") as dialog:
+            app.open_pdf()
+
+        self.assertEqual(Path("/tmp/book.cbz"), app.pdf_path)
+        self.assertEqual("Open Source", dialog.call_args.kwargs["title"])
+        self.assertIn("*.pdf *.cbz *.zip", dialog.call_args.kwargs["filetypes"][0][1])
 
     def test_thumbnail_cache_key_uses_stableentry_identity(self):
         app = EpubLayoutApp.__new__(EpubLayoutApp)
@@ -277,6 +288,21 @@ class EpubLayoutGuiCommandTests(unittest.TestCase):
 
         self.assertIsNone(thumbnail)
         self.assertEqual((3, 120, 180, ("pdf", 3, 150, 200)), app.render_request)
+
+    def test_thumbnail_for_archive_source_page_uses_entry_payload(self):
+        app = EpubLayoutApp.__new__(EpubLayoutApp)
+        app.pdf_path = Path("/tmp/book.cbz")
+        app.thumbnail_cache = {}
+        entry_obj = SimpleNamespace(
+            source_index=1,
+            page=SimpleNamespace(item_id="page-0001", load_image_data=lambda: b"PNG"),
+        )
+
+        with patch("manga_pdf_to_epub.gui.layout_app.tk.PhotoImage", return_value=SimpleNamespace(width=lambda: 10, height=lambda: 20)) as photo:
+            thumbnail = app._thumbnail_for_source_entry(entry_obj, 120, 180)
+
+        self.assertIsNotNone(thumbnail)
+        photo.assert_called_once_with(data=b"PNG")
 
     def test_thumbnail_render_done_caches_image_and_refreshes_current_pdf(self):
         app = EpubLayoutApp.__new__(EpubLayoutApp)
