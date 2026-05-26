@@ -23,6 +23,7 @@ This tool focuses on the boring-but-crucial details:
 - Save v2 layout presets with spine order, metadata, cover rule, blanks, deleted pages, and inserted-image references.
 - Apply presets to selected series volumes while keeping generated series titles such as `Series Title Vol.01`.
 - Import a manga series, review volumes individually, mark reviewed volumes ready, unready selected volumes when needed, and export ready volumes together.
+- Save and reopen series projects with volume status, active volume, and per-volume layout edits.
 - Validate generated EPUB structure before reporting export success.
 - Recover deleted pages during layout editing.
 
@@ -36,7 +37,7 @@ This tool focuses on the boring-but-crucial details:
 - Arbitrary blank page insertion before or after selected pages.
 - Page deletion with recover support.
 - Preset save/load for applying layout corrections to one volume or a scoped set of series volumes.
-- Series import with generated `Vol.xx` titles, multi-volume ready marking, selected-volume unready, and ready-only export.
+- Series import with generated `Vol.xx` titles, project save/load, multi-volume ready marking, selected-volume unready, and ready-only export.
 - Diagnose possible split double-page spreads from a linked single-volume Diagnose window.
 - Manually confirm true spreads, add missed spread pairs from Spine order, and check whether the current Apple Books preview layout damages them.
 - Review color-marked blank insertion suggestions before executing one insertion at a time.
@@ -120,11 +121,14 @@ For a manga series:
 4. Fix blank pages, deletions, inserted images, and cover choices per volume.
 5. Select one or more volumes and click `Mark Selected Volume Ready` after reviewing them.
 6. If a ready volume needs more work, select it and click `Unready Selected`. Only the selected volumes are restored from ready history; the rest of the batch stays ready.
-7. Click `Export Ready Series...` to export only volumes marked `Ready`.
+7. Use `Save Project...` to save the series project when you want to continue later. Use `Open Project...` to restore the volume list, statuses, active volume, and saved per-volume layouts.
+8. Click `Export Ready Series...` to export only volumes marked `Ready`.
 
 The series workflow avoids blindly applying a single correction template to every volume. If Vol.05 needs no blank page while Vol.06 needs two blanks, each volume can keep its own layout before it is marked ready.
 
 Series export does not overwrite existing EPUB files. If the chosen output directory already contains a ready volume's target filename, the GUI warns during preflight and that volume will fail instead of replacing the file.
+
+Series project files are JSON. Source paths, output paths, and inserted-image references are stored relative to the project file when possible, so keeping the project file near the source assets makes the workflow easier to move.
 
 When no deleted page is waiting to be recovered, `Cmd+Z` uses the same selected-first unready behavior as `Unready Selected`.
 
